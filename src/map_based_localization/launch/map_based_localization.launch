@@ -1,0 +1,157 @@
+<!-- 
+  基于点云地图的扫描匹配定位系统启动文件
+  使用方法: roslaunch map_based_localization map_based_localization.launch map_file:=你的地图文件路径
+-->
+<launch>
+    <!-- 参数定义 -->
+    <arg name="map_file" default="$(env HOME)/indoor_maps/indoor_map.pcd" />
+    <arg name="use_rviz" default="true" />
+    <arg name="matching_method" default="icp" />
+    <arg name="laser_topic" default="/scan" />
+    <arg name="map_frame" default="map" />
+    <arg name="base_frame" default="base_link" />
+    <arg name="laser_frame" default="laser" />
+    
+    <!-- 地图加载节点 -->
+    <node pkg="map_based_localization" type="map_loader" name="map_loader" output="screen">
+        <param name="map_file_path" value="$(arg map_file)" />
+        <param name="map_frame" value="$(arg map_frame)" />
+        <param name="voxel_size" value="0.1" />
+        <param name="filter_outliers" value="true" />
+        <param name="publish_rate" value="0.1" />
+    </node>
+    
+    <!-- 扫描匹配定位节点 -->
+    <node pkg="map_based_localization" type="scan_matching_localizer" name="scan_matching_localizer" output="screen">
+        <param name="map_frame" value="$(arg map_frame)" />
+        <param name="base_frame" value="$(arg base_frame)" />
+        <param name="laser_frame" value="$(arg laser_frame)" />
+        <param name="max_range" value="20.0" />
+        <param name="min_range" value="0.3" />
+        <param name="matching_method" value="$(arg matching_method)" />
+        
+        <!-- ICP参数 -->
+        <param name="icp_max_distance" value="1.0" />
+        <param name="icp_max_iterations" value="50" />
+        
+        <!-- NDT参数 -->
+        <param name="ndt_resolution" value="1.0" />
+        <param name="ndt_step_size" value="0.1" />
+        
+        <!-- 重映射话题 -->
+        <remap from="/scan" to="$(arg laser_topic)" />
+    </node>
+    
+    <!-- Livox MID-360雷达驱动节点 -->
+    <include file="$(find livox_ros_driver)/launch/livox_lidar_msg.launch">
+        <arg name="bd_list" value="3GGDJ6S00100161"/>  <!-- 请替换为你的雷达序列号 -->
+        <arg name="xfer_format" value="1"/>  <!-- 0-Pointcloud2(PointXYZRTL), 1-customized pointcloud format -->
+        <arg name="multi_topic" value="0"/>  <!-- 0-All LiDARs share the same topic, 1-One LiDAR one topic -->
+        <arg name="data_src" value="0"/>     <!-- 0-lidar, 1-hub -->
+        <arg name="publish_freq" value="10.0"/>  <!-- frequency of publish, 5.0, 10.0, 20.0, 50.0, etc. -->
+        <arg name="output_type" value="0"/>  <!-- 0-original coordinate, 1-vehicle coordinate -->
+        <arg name="frame_id" value="$(arg laser_frame)"/>
+        <arg name="lidar_bag" value="false"/>
+        <arg name="imu_bag" value="false"/>
+    </include>
+    
+    <!-- 2D激光扫描定位模式 (已禁用，如需2D定位请取消注释并注释下面的3D定位) -->
+    <!--
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="pointcloud_to_laserscan" output="screen">
+        <remap from="cloud_in" to="/livox/lidar"/>
+        <remap from="scan" to="$(arg laser_topic)"/>
+        <param name="target_frame" value="$(arg laser_frame)"/>
+        <param name="transform_tolerance" value="0.01"/>
+        <param name="min_height" value="-0.5"/>
+        <param name="max_height" value="2.0"/>
+        <param name="angle_min" value="-3.14159"/>
+        <param name="angle_max" value="3.14159"/>
+        <param name="angle_increment" value="0.0087"/>
+        <param name="scan_time" value="0.1"/>
+        <param name="range_min" value="0.3"/>
+        <param name="range_max" value="100.0"/>
+        <param name="use_inf" value="true"/>
+        <param name="inf_epsilon" value="1.0"/>
+    </node>
+    
+    <node pkg="map_based_localization" type="scan_matching_localizer" name="scan_matching_localizer" output="screen">
+        <param name="map_frame" value="$(arg map_frame)" />
+        <param name="base_frame" value="$(arg base_frame)" />
+        <param name="laser_frame" value="$(arg laser_frame)" />
+        <param name="max_range" value="20.0" />
+        <param name="min_range" value="0.3" />
+        <param name="matching_method" value="$(arg matching_method)" />
+        <param name="icp_max_distance" value="1.0" />
+        <param name="icp_max_iterations" value="50" />
+        <param name="ndt_resolution" value="1.0" />
+        <param name="ndt_step_size" value="0.1" />
+        <remap from="/scan" to="$(arg laser_topic)" />
+    </node>
+    -->
+    
+    <!-- 3D点云定位模式 (当前启用) -->
+    <node pkg="map_based_localization" type="pointcloud_matching_localizer" name="pointcloud_matching_localizer" output="screen">
+        <param name="map_frame" value="$(arg map_frame)" />
+        <param name="base_frame" value="$(arg base_frame)" />
+        <param name="lidar_frame" value="$(arg laser_frame)" />
+        <param name="max_range" value="80.0" />
+        <param name="min_range" value="0.5" />
+        <param name="max_height" value="3.0" />
+        <param name="min_height" value="-1.0" />
+        <param name="matching_method" value="$(arg matching_method)" />
+        
+        <!-- ICP参数 (适用于高精度定位) -->
+        <param name="icp_max_distance" value="2.0" />
+        <param name="icp_max_iterations" value="50" />
+        
+        <!-- NDT参数 (适用于实时定位，推荐) -->
+        <param name="ndt_resolution" value="2.0" />
+        <param name="ndt_step_size" value="0.1" />
+        
+        <!-- 点云预处理参数 -->
+        <param name="voxel_leaf_size" value="0.2" />
+        <param name="enable_outlier_filter" value="true" />
+        <param name="outlier_mean_k" value="50" />
+        <param name="outlier_stddev_thresh" value="1.0" />
+        
+        <!-- 使用R3LIVE处理后的高质量点云（推荐） -->
+        <remap from="/cloud_in" to="/cloud_registered" />
+        
+        <!-- 可选：使用原始Livox点云 -->
+        <!-- <remap from="/cloud_in" to="/livox/lidar" /> -->
+        
+        <!-- 可选：使用LOAM特征点云 -->
+        <!-- <remap from="/cloud_in" to="/laser_cloud_flat" /> -->
+    </node>
+    
+    <!-- 静态TF变换：base_link到livox (根据实际安装位置调整) -->
+    <!-- Livox MID-360通常安装在机器人顶部，需要根据实际安装位置调整x,y,z,roll,pitch,yaw -->
+    <node pkg="tf" type="static_transform_publisher" name="base_to_livox_tf" 
+          args="0.0 0.0 0.3 0 0 0 $(arg base_frame) $(arg laser_frame) 100" />
+    
+    <!-- 如果使用R3LIVE系统，可能已经有IMU到Livox的变换，请根据实际情况调整 -->
+    <!-- 
+    <node pkg="tf" type="static_transform_publisher" name="imu_to_livox_tf" 
+          args="0.0 0.0 0.0 0 0 0 imu_link $(arg laser_frame) 100" />
+    -->
+    
+    <!-- RViz可视化 -->
+    <group if="$(arg use_rviz)">
+        <node name="rviz" pkg="rviz" type="rviz" output="log" 
+              args="-d $(find map_based_localization)/config/localization_3d_rviz.rviz" />
+    </group>
+    
+    <!-- 参数信息输出 -->
+    <node pkg="rospy" type="rospy" name="launch_info" output="screen">
+        <param name="node_name" value="launch_info" />
+        <rosparam>
+            launch_parameters:
+                map_file: $(arg map_file)
+                matching_method: $(arg matching_method)
+                laser_topic: $(arg laser_topic)
+                map_frame: $(arg map_frame)
+                base_frame: $(arg base_frame)
+                laser_frame: $(arg laser_frame)
+        </rosparam>
+    </node>
+</launch>
