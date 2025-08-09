@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>李群李代数 SE(3) 仿真</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/controls/OrbitControls.js"></script>
+<script id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+<style>
+    * { box-sizing: border-box; }
+    body { 
+        margin: 0; 
+        font-family: Arial, sans-serif; 
+        background: #f0f0f0; 
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+    }
+    #container { 
+        flex: 1;
+        min-width: 300px;
+        height: 100vh; 
+        background: #e8e8e8;
+        position: relative;
+    }
+    #splitter {
+        width: 6px;
+        height: 100vh;
+        background: #ccc;
+        cursor: col-resize;
+        position: relative;
+        flex-shrink: 0;
+        border-left: 1px solid #bbb;
+        border-right: 1px solid #bbb;
+        transition: background-color 0.2s;
+    }
+    #splitter:hover {
+        background: #999;
+    }
+    #splitter::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 30px;
+        background: #666;
+        border-radius: 1px;
+    }
+    #info { 
+        flex: 1;
+        min-width: 250px;
+        height: 100vh; 
+        background: white; 
+        overflow-y: auto; 
+        padding: 15px;
+    }
+    h2 { margin-top: 0; color: #333; }
+    .slider-container { 
+        margin: 5px 0; 
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .slider-container label { 
+        display: inline-block; 
+        width: 60px; 
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .slider-container input[type="range"] {
+        flex: 1;
+        margin: 0 8px;
+    }
+    .slider-container span {
+        width: 50px;
+        text-align: right;
+        font-size: 11px;
+        color: #666;
+    }
+    .section { 
+        margin: 15px 0; 
+        padding: 10px;
+        background: #f9f9f9;
+        border-radius: 5px;
+        border: 1px solid #eee;
+    }
+    .section h3 { 
+        margin: 0 0 8px 0; 
+        color: #2c5aa0;
+        font-size: 14px;
+    }
+    .row { 
+        display: flex; 
+        gap: 8px; 
+        align-items: center; 
+        flex-wrap: wrap; 
+        margin: 8px 0;
+    }
+    .muted { 
+        color: #666; 
+        font-size: 11px; 
+        margin: 5px 0;
+        line-height: 1.3;
+    }
+    pre { 
+        background: #fafafa; 
+        border: 1px solid #ddd; 
+        padding: 6px; 
+        overflow-x: auto; 
+        font-size: 10px;
+        margin: 4px 0;
+        border-radius: 3px;
+    }
+    button {
+        padding: 4px 8px;
+        font-size: 11px;
+        border: 1px solid #ccc;
+        background: #f5f5f5;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    button:hover {
+        background: #e5e5e5;
+    }
+    input[type="checkbox"], input[type="radio"] {
+        margin-right: 4px;
+    }
+    label {
+        font-size: 11px;
+        cursor: pointer;
+    }
+</style>
+</head>
+<body>
+<div id="container"></div>
+<div id="splitter"></div>
+<div id="info">
+    <h2>SE(3) 仿真与扰动面板</h2>
+
+    <div class="section">
+        <h3>基础李代数向量 ξ</h3>
+        <p class="muted">拖动滑块设置基础位姿：\(\xi = [v^T,\ \omega^T]^T\)</p>
+        <div id="sliders"></div>
+    </div>
+
+    <div class="section">
+        <h3>扰动模型 δξ</h3>
+        <p class="muted">左扰动：\(T' = \exp(\delta\xi)\,T\)；右扰动：\(T' = T\,\exp(\delta\xi)\)。</p>
+        <div id="delta-sliders"></div>
+        <div class="row" style="margin-top:6px;">
+            <label><input type="checkbox" id="perturb-on"> 启用扰动</label>
+            <label><input type="radio" name="perturb-mode" id="perturb-left" value="left" checked> 左扰动</label>
+            <label><input type="radio" name="perturb-mode" id="perturb-right" value="right"> 右扰动</label>
+            <button id="delta-reset">重置扰动</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>当前状态</h3>
+        <p class="muted">显示当前使用的位姿矩阵 \(T'\) 及其对数：\(\log(T')\)</p>
+        <div>
+            <strong>ξ 基础：</strong>
+            <pre id="xi-base-display">-</pre>
+            <strong>δξ 扰动：</strong>
+            <pre id="xi-perturb-display">-</pre>
+            <strong>log(T')：</strong>
+            <pre id="xi-log-display">-</pre>
+            <strong>T' 矩阵：</strong>
+            <pre id="T-display">-</pre>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>公式参考</h3>
+        <p>SE(3) 位姿矩阵：</p>
+        <div>\(T = \begin{bmatrix} R & t \\ 0 & 1 \end{bmatrix}\)</div>
+        <p>李代数：</p>
+        <div>\(\xi = \begin{bmatrix} v \\ \omega \end{bmatrix}\)</div>
+        <p>指数映射：</p>
+        <div>
+            \(\mathrm{Exp}(\xi) = 
+            \begin{bmatrix}
+            \mathrm{Exp}(\omega^\wedge) & J(\omega)v \\
+            0 & 1
+            \end{bmatrix}\)
+        </div>
+    </div>
+</div>
+
+<script>
+// === 生成滑块 ===
+const sliderLabels = ["v_x", "v_y", "v_z", "ω_x", "ω_y", "ω_z"];
+let xi = [0, 0, 0, 0, 0, 0];
+const slidersDiv = document.getElementById("sliders");
+
+sliderLabels.forEach((label, i) => {
+    const div = document.createElement("div");
+    div.className = "slider-container";
+    div.innerHTML = `<label>${label}:</label>
+        <input type="range" min="-1" max="1" step="0.01" value="0" id="slider${i}">
+        <span id="value${i}">0</span>`;
+    slidersDiv.appendChild(div);
+
+    const slider = div.querySelector("input");
+    const valueSpan = div.querySelector("span");
+    slider.addEventListener("input", () => {
+        xi[i] = parseFloat(slider.value);
+        valueSpan.textContent = slider.value;
+        updatePose();
+    });
+});
+
+// === 扰动滑块 ===
+const deltaSliderLabels = ["δv_x", "δv_y", "δv_z", "δω_x", "δω_y", "δω_z"];
+let deltaXi = [0, 0, 0, 0, 0, 0];
+const deltaSlidersDiv = document.getElementById("delta-sliders");
+
+deltaSliderLabels.forEach((label, i) => {
+    const div = document.createElement("div");
+    div.className = "slider-container";
+    div.innerHTML = `<label>${label}:</label>
+        <input type="range" min="-0.5" max="0.5" step="0.005" value="0" id="dslider${i}">
+        <span id="dvalue${i}">0</span>`;
+    deltaSlidersDiv.appendChild(div);
+
+    const slider = div.querySelector("input");
+    const valueSpan = div.querySelector("span");
+    slider.addEventListener("input", () => {
+        deltaXi[i] = parseFloat(slider.value);
+        valueSpan.textContent = slider.value;
+        updatePose();
+    });
+});
+
+// 扰动控件事件
+let perturbOn = false;
+let perturbMode = 'left';
+
+document.getElementById('perturb-on').addEventListener('change', (e) => {
+    perturbOn = e.target.checked;
+    updatePose();
+});
+document.getElementById('perturb-left').addEventListener('change', (e) => {
+    if (e.target.checked) { perturbMode = 'left'; updatePose(); }
+});
+document.getElementById('perturb-right').addEventListener('change', (e) => {
+    if (e.target.checked) { perturbMode = 'right'; updatePose(); }
+});
+document.getElementById('delta-reset').addEventListener('click', () => {
+    deltaXi = [0,0,0,0,0,0];
+    for (let i=0;i<6;i++) {
+        const s = document.getElementById(`dslider${i}`);
+        const sp = document.getElementById(`dvalue${i}`);
+        if (s && sp) { s.value = '0'; sp.textContent = '0'; }
+    }
+    updatePose();
+});
+
+// === 分隔条拖拽功能 ===
+let isDragging = false;
+let startX = 0;
+let startContainerWidth = 0;
+
+const splitter = document.getElementById('splitter');
+const container = document.getElementById('container');
+const info = document.getElementById('info');
+
+splitter.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startContainerWidth = container.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    
+    const deltaX = e.clientX - startX;
+    const newContainerWidth = startContainerWidth + deltaX;
+    const totalWidth = window.innerWidth;
+    const minContainerWidth = 300;
+    const minInfoWidth = 250;
+    const splitterWidth = 6;
+    
+    // 计算约束
+    const maxContainerWidth = totalWidth - minInfoWidth - splitterWidth;
+    const clampedWidth = Math.max(minContainerWidth, Math.min(newContainerWidth, maxContainerWidth));
+    
+    // 计算百分比
+    const containerPercent = (clampedWidth / totalWidth) * 100;
+    const infoPercent = ((totalWidth - clampedWidth - splitterWidth) / totalWidth) * 100;
+    
+    // 应用新的宽度
+    container.style.flex = `0 0 ${containerPercent}%`;
+    info.style.flex = `0 0 ${infoPercent}%`;
+    
+    // 更新Three.js渲染器尺寸
+    if (renderer) {
+        renderer.setSize(clampedWidth, window.innerHeight);
+        if (camera) {
+            camera.aspect = clampedWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    if (isDragging) {
+        isDragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }
+});
+
+// === three.js 场景初始化函数 ===
+function initThreeJS() {
+    // 获取容器实际宽度
+    const containerElement = document.getElementById("container");
+    const containerWidth = containerElement.offsetWidth || window.innerWidth * 0.6; // 回退值
+    
+    const camera = new THREE.PerspectiveCamera(60, containerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(4, 3, 6);
+
+    const renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer.setSize(containerWidth, window.innerHeight);
+    containerElement.appendChild(renderer.domElement);
+    
+    return { camera, renderer };
+}
+
+// === 全局变量 ===
+let scene, camera, renderer, controls, robot;
+
+// 延迟初始化确保DOM布局完成
+setTimeout(() => {
+    // === three.js 场景 ===
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0f0f0);
+
+    const { camera: cameraInit, renderer: rendererInit } = initThreeJS();
+    camera = cameraInit;
+    renderer = rendererInit;
+
+    controls = null;
+    if (THREE.OrbitControls) {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        // 设置控制器目标为场景中央
+        controls.target.set(0, 0, 0);
+        controls.update();
+    } else {
+        console.warn('OrbitControls not available; skipping.');
+        // 如果没有OrbitControls，手动设置相机看向中央
+        camera.lookAt(0, 0, 0);
+    }
+
+// 坐标系 - 放置在场景中央
+const axes = new THREE.AxesHelper(2);
+axes.position.set(0, 0, 0); // 明确设置在中央
+scene.add(axes);
+
+// 光照
+scene.add(new THREE.AmbientLight(0x555555));
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5, 10, 7);
+scene.add(light);
+
+    // 机器人 - 放置在场景中央
+    const robotGeom = new THREE.BoxGeometry(1, 0.5, 0.5);
+    const robotMat = new THREE.MeshPhongMaterial({color: 0x0077ff});
+    robot = new THREE.Mesh(robotGeom, robotMat);
+    robot.position.set(0, 0, 0); // 明确设置在中央
+    scene.add(robot);
+
+    // 初始化完成后调用更新
+    updatePose();
+    animate();
+}, 10); // setTimeout结束
+
+// === 李代数指数映射函数 ===
+function hat(omega) {
+    return new THREE.Matrix3().set(
+        0, -omega[2], omega[1],
+        omega[2], 0, -omega[0],
+        -omega[1], omega[0], 0
+    );
+}
+
+// Matrix3 相加（three.js 未提供此方法）
+function mat3Add(a, b) {
+    const out = new THREE.Matrix3();
+    const ae = a.elements, be = b.elements, oe = out.elements;
+    for (let i = 0; i < 9; i++) oe[i] = ae[i] + be[i];
+    return out;
+}
+
+function expSO3(omega) {
+    const theta = Math.hypot(...omega);
+    const I = new THREE.Matrix3().identity();
+    if (theta < 1e-8) return I;
+
+    const omegaHat = hat(omega);
+    const omegaHat2 = omegaHat.clone().multiply(omegaHat);
+    const s = Math.sin(theta), c = Math.cos(theta);
+
+    const term1 = omegaHat.clone().multiplyScalar(s/theta);
+    const term2 = omegaHat2.clone().multiplyScalar((1-c)/(theta*theta));
+
+    return mat3Add(I, mat3Add(term1, term2));
+}
+
+// 左雅可比逆 J^{-1}(ω)
+function leftJacobianInvSO3(omega) {
+    const theta = Math.hypot(...omega);
+    const I = new THREE.Matrix3().identity();
+    if (theta < 1e-8) {
+        // 近似：J^{-1} ≈ I - 0.5 ω^ + 1/12 (ω^)²
+        const A = hat(omega);
+        const A2 = A.clone().multiply(A);
+        const term1 = A.clone().multiplyScalar(-0.5);
+        const term2 = A2.clone().multiplyScalar(1/12);
+        return mat3Add(I, mat3Add(term1, term2));
+    }
+    const A = hat(omega);
+    const A2 = A.clone().multiply(A);
+    const s = Math.sin(theta), c = Math.cos(theta);
+    const c2 = 1/(theta*theta) - (1 + c)/(2*theta*s);
+    const term1 = A.clone().multiplyScalar(-0.5);
+    const term2 = A2.clone().multiplyScalar(c2);
+    return mat3Add(I, mat3Add(term1, term2));
+}
+
+// logSO3: R -> ω
+function logSO3(R) {
+    const e = R.elements;
+    // 提取迹
+    const trace = e[0] + e[4] + e[8];
+    let cosTheta = (trace - 1) / 2;
+    cosTheta = Math.max(-1, Math.min(1, cosTheta));
+    const theta = Math.acos(cosTheta);
+    if (theta < 1e-8) return new THREE.Vector3(0,0,0);
+    const s = Math.sin(theta);
+    if (Math.abs(s) > 1e-6) {
+        const factor = theta / (2*s);
+        const wx = (e[5] - e[7]) * factor; // R32 - R23
+        const wy = (e[6] - e[2]) * factor; // R13 - R31
+        const wz = (e[1] - e[3]) * factor; // R21 - R12
+        return new THREE.Vector3(wx, wy, wz);
+    }
+    // 退化（接近π），使用归一化反对称部分近似轴向量
+    const v = new THREE.Vector3(e[5]-e[7], e[6]-e[2], e[1]-e[3]);
+    if (v.length() > 0) v.normalize();
+    return v.multiplyScalar(theta);
+}
+
+// logSE3: T -> ξ = [v, ω]
+function logSE3(T) {
+    const te = T.elements;
+    const R = new THREE.Matrix3().set(
+        te[0], te[4], te[8],
+        te[1], te[5], te[9],
+        te[2], te[6], te[10]
+    );
+    const t = new THREE.Vector3(te[12], te[13], te[14]);
+    const omega = logSO3(R);
+    const Jinv = leftJacobianInvSO3([omega.x, omega.y, omega.z]);
+    const v = t.clone().applyMatrix3(Jinv);
+    return [v.x, v.y, v.z, omega.x, omega.y, omega.z];
+}
+
+// 矩阵乘（SE3 组合）: out = A * B
+function multiplySE3(A, B) {
+    return A.clone().multiply(B);
+}
+
+function fmt(x) {
+    return (Math.abs(x) < 1e-8 ? 0 : x).toFixed(4);
+}
+
+function renderVec6(xi) {
+    return `[ ${fmt(xi[0])}, ${fmt(xi[1])}, ${fmt(xi[2])} | ${fmt(xi[3])}, ${fmt(xi[4])}, ${fmt(xi[5])} ]`;
+}
+
+function renderMat4(T) {
+    const e = T.elements;
+    const row = (r) => `${fmt(e[r])}\t${fmt(e[r+4])}\t${fmt(e[r+8])}\t${fmt(e[r+12])}`;
+    return `${row(0)}\n${row(1)}\n${row(2)}\n${row(3)}`;
+}
+
+function leftJacobianSO3(omega) {
+    const theta = Math.hypot(...omega);
+    const I = new THREE.Matrix3().identity();
+    if (theta < 1e-8) return I;
+
+    const omegaHat = hat(omega);
+    const omegaHat2 = omegaHat.clone().multiply(omegaHat);
+    const s = Math.sin(theta), c = Math.cos(theta);
+
+    const term1 = omegaHat.clone().multiplyScalar((1-c)/(theta*theta));
+    const term2 = omegaHat2.clone().multiplyScalar((theta-s)/(theta*theta*theta));
+
+    return mat3Add(I, mat3Add(term1, term2));
+}
+
+function expSE3(xi) {
+    const v = xi.slice(0,3);
+    const omega = xi.slice(3,6);
+
+    const Rm = expSO3(omega);
+    const J = leftJacobianSO3(omega);
+
+    const tVec = new THREE.Vector3(...v);
+    const J3 = new THREE.Matrix3().copy(J);
+    const tOut = tVec.applyMatrix3(J3);
+
+    const T = new THREE.Matrix4();
+    T.set(
+        Rm.elements[0], Rm.elements[3], Rm.elements[6], tOut.x,
+        Rm.elements[1], Rm.elements[4], Rm.elements[7], tOut.y,
+        Rm.elements[2], Rm.elements[5], Rm.elements[8], tOut.z,
+        0, 0, 0, 1
+    );
+    return T;
+}
+
+// 更新位姿
+function updatePose() {
+    const Tbase = expSE3(xi);
+    let T = Tbase;
+    if (perturbOn) {
+        const Td = expSE3(deltaXi);
+        T = (perturbMode === 'left') ? multiplySE3(Td, Tbase) : multiplySE3(Tbase, Td);
+    }
+    robot.matrix.copy(T);
+    robot.matrixAutoUpdate = false;
+    // 更新展示
+    const xiLog = logSE3(T);
+    const xb = document.getElementById('xi-base-display');
+    const xd = document.getElementById('xi-perturb-display');
+    const xl = document.getElementById('xi-log-display');
+    const tm = document.getElementById('T-display');
+    if (xb) xb.textContent = `ξ = ${renderVec6(xi)}`;
+    if (xd) xd.textContent = `δξ (${perturbMode}) = ${renderVec6(deltaXi)}  |  ${perturbOn ? '启用' : '未启用'}`;
+    if (xl) xl.textContent = `log(T') = ${renderVec6(xiLog)}`;
+    if (tm) tm.textContent = renderMat4(T);
+}
+
+// 渲染循环
+function animate() {
+    if (renderer && scene && camera) {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+}
+
+window.addEventListener("resize", () => {
+    const containerWidth = container.offsetWidth;
+    camera.aspect = containerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(containerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
+

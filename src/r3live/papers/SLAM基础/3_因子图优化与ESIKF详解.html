@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>因子图优化与ESIKF详解</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2ecc71;
+            --accent: #9b59b6;
+            --dark: #2c3e50;
+            --light: #ecf0f1;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px;
+            background: linear-gradient(135deg, var(--dark), var(--primary));
+            color: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        header::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+            transform: rotate(30deg);
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        
+        .subtitle {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 50px;
+            padding: 5px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .nav-btn {
+            padding: 14px 35px;
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 50px;
+            transition: all 0.4s ease;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .nav-btn.active {
+            color: white;
+            background: var(--primary);
+            box-shadow: 0 4px 10px rgba(52, 152, 219, 0.4);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            padding: 30px;
+            margin-bottom: 30px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-left: 4px solid var(--primary);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-7px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.12);
+        }
+        
+        .card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--light);
+        }
+        
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 20px;
+            color: white;
+            font-size: 1.8rem;
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+        }
+        
+        .card-title {
+            font-size: 1.8rem;
+            color: var(--dark);
+            font-weight: 700;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            color: var(--primary);
+            margin: 25px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px dashed #e0e6ed;
+        }
+        
+        .content-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 25px;
+            margin: 25px 0;
+        }
+        
+        .math-formula {
+            flex: 1;
+            min-width: 300px;
+            background: #f9fbfd;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 4px solid var(--accent);
+            box-shadow: inset 4px 0 0 var(--accent), 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .math-formula h3 {
+            color: var(--accent);
+            margin-bottom: 15px;
+            font-size: 1.4rem;
+        }
+        
+        .variable-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .variable-table th, 
+        .variable-table td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid #eef1f5;
+        }
+        
+        .variable-table th {
+            background: linear-gradient(135deg, var(--dark), #34495e);
+            color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .variable-table tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        
+        .variable-table tr:hover {
+            background-color: #eef7ff;
+        }
+        
+        .derivation-steps {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            border-left: 4px solid var(--secondary);
+            box-shadow: inset 4px 0 0 var(--secondary), 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .step {
+            margin-bottom: 25px;
+            padding-bottom: 25px;
+            border-bottom: 1px dashed #dce4ec;
+        }
+        
+        .step:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        
+        .step-number {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            background: var(--secondary);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 32px;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        
+        .step-title {
+            display: inline;
+            font-size: 1.3rem;
+            color: var(--dark);
+        }
+        
+        .diagram {
+            flex: 1;
+            min-width: 300px;
+            height: 350px;
+            background: #f8fafc;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .comparison-chart {
+            width: 100%;
+            height: 400px;
+            margin: 30px 0;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 30px;
+            margin-top: 40px;
+            color: #7f8c8d;
+            border-top: 1px solid #e0e6ed;
+            font-size: 1.1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .content-container {
+                flex-direction: column;
+            }
+            
+            .nav-tabs {
+                flex-direction: column;
+                border-radius: 15px;
+            }
+            
+            .nav-btn {
+                width: 100%;
+                border-radius: 0;
+            }
+            
+            header {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+        }
+        
+        .highlight {
+            background: linear-gradient(120deg, rgba(52, 152, 219, 0.15), rgba(46, 204, 113, 0.15));
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .key-concept {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid var(--warning);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .graph-node {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 2;
+        }
+        
+        .factor-node {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>因子图优化与ESIKF详解</h1>
+            <p class="subtitle">图优化与卡尔曼滤波在SLAM系统中的数学原理与实现</p>
+        </header>
+        
+        <div class="nav-tabs">
+            <button class="nav-btn active">因子图优化</button>
+            <button class="nav-btn">ESIKF原理</button>
+            <button class="nav-btn">数学推导</button>
+            <button class="nav-btn">应用对比</button>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">G</div>
+                <h2 class="card-title">因子图优化（Factor Graph Optimization）</h2>
+            </div>
+            
+            <p>因子图优化（Factor Graph Optimization, FGO）是一种基于图理论的大规模非线性优化方法，广泛应用于SLAM、机器人定位和计算机视觉领域。它将复杂的全局优化问题分解为多个局部约束因子的乘积，通过最大后验概率（MAP）估计来求解最优状态。</p>
+            
+            <h3 class="section-title">变量定义与符号说明</h3>
+            
+            <table class="variable-table">
+                <thead>
+                    <tr>
+                        <th>符号</th>
+                        <th>描述</th>
+                        <th>维度</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>\(\mathbf{X}\)</td>
+                        <td>全局状态向量</td>
+                        <td>\(n \times 1\)</td>
+                        <td>包含所有待估计变量</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{x}_i\)</td>
+                        <td>第\(i\)个状态变量</td>
+                        <td>\(d_i \times 1\)</td>
+                        <td>如位姿、路标点等</td>
+                    </tr>
+                    <tr>
+                        <td>\(f_i(\mathbf{X}_i)\)</td>
+                        <td>第\(i\)个因子函数</td>
+                        <td>\(\mathbb{R}^+\)</td>
+                        <td>表示局部约束</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{X}_i\)</td>
+                        <td>因子\(i\)涉及的变量子集</td>
+                        <td>\(k_i \times 1\)</td>
+                        <td>\(\mathbf{X}_i \subseteq \mathbf{X}\)</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{e}_i(\mathbf{X}_i)\)</td>
+                        <td>第\(i\)个误差函数</td>
+                        <td>\(m_i \times 1\)</td>
+                        <td>测量残差或约束误差</td>
+                    </tr>
+                    <tr>
+                        <td>\(\boldsymbol{\Sigma}_i\)</td>
+                        <td>第\(i\)个因子的信息矩阵</td>
+                        <td>\(m_i \times m_i\)</td>
+                        <td>\(\boldsymbol{\Sigma}_i = \mathbf{R}_i^{-1}\)</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{R}_i\)</td>
+                        <td>第\(i\)个因子的协方差矩阵</td>
+                        <td>\(m_i \times m_i\)</td>
+                        <td>表示测量噪声</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{J}_i\)</td>
+                        <td>第\(i\)个误差函数的雅可比矩阵</td>
+                        <td>\(m_i \times n\)</td>
+                        <td>\(\mathbf{J}_i = \frac{\partial \mathbf{e}_i}{\partial \mathbf{X}}\)</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="key-concept">
+                <h3 class="section-title">核心思想</h3>
+                <p>因子图是一种二分图（Bipartite Graph），包含两类节点：</p>
+                <ul>
+                    <li><span class="highlight">变量节点（Variable Nodes）</span>：表示需要估计的状态变量，如机器人位姿 \(\mathbf{x}_i \in SE(3)\)、路标点位置 \(\mathbf{l}_j \in \mathbb{R}^3\) 等</li>
+                    <li><span class="highlight">因子节点（Factor Nodes）</span>：表示约束关系，包括：
+                        <ul>
+                            <li><strong>先验因子</strong>：\(f_0(\mathbf{x}_0)\) - 初始位姿约束</li>
+                            <li><strong>里程计因子</strong>：\(f_{ij}(\mathbf{x}_i, \mathbf{x}_j)\) - 相邻位姿间的运动约束</li>
+                            <li><strong>观测因子</strong>：\(f_{ik}(\mathbf{x}_i, \mathbf{l}_k)\) - 位姿与路标点间的观测约束</li>
+                            <li><strong>回环因子</strong>：\(f_{loop}(\mathbf{x}_i, \mathbf{x}_j)\) - 回环检测约束</li>
+                        </ul>
+                    </li>
+                </ul>
+                
+                <h4>优化目标函数</h4>
+                <p>基于最大后验概率（MAP）估计，优化目标为：</p>
+                <p>\[
+                \mathbf{X}^* = \arg\max_{\mathbf{X}} p(\mathbf{X}|\mathbf{Z}) = \arg\max_{\mathbf{X}} p(\mathbf{Z}|\mathbf{X}) p(\mathbf{X})
+                \]</p>
+                <p>等价于最小化负对数似然：</p>
+                <p>\[
+                \mathbf{X}^* = \arg\min_{\mathbf{X}} \sum_i \left\| \mathbf{e}_i(\mathbf{X}_i) \right\|_{\boldsymbol{\Sigma}_i}^2
+                \]</p>
+                <p>其中马哈拉诺比斯距离定义为：</p>
+                <p>\[
+                \left\| \mathbf{e}_i \right\|_{\boldsymbol{\Sigma}_i}^2 = \mathbf{e}_i^T \boldsymbol{\Sigma}_i \mathbf{e}_i = \mathbf{e}_i^T \mathbf{R}_i^{-1} \mathbf{e}_i
+                \]</p>
+            </div>
+            
+            <h3 class="section-title">因子图结构</h3>
+            
+            <div class="content-container">
+                <div class="diagram" id="factor-graph">
+                    <!-- Factor graph will be rendered here -->
+                </div>
+                
+                <div class="math-formula">
+                    <h3>数学表示与概率模型</h3>
+                    
+                    <h4>1. 因子分解</h4>
+                    <p>因子图将联合概率分解为局部因子的乘积：</p>
+                    <p>\[
+                    p(\mathbf{X}, \mathbf{Z}) = \prod_{i=1}^{m} f_i(\mathbf{X}_i, \mathbf{z}_i)
+                    \]</p>
+                    <p>其中\(\mathbf{Z} = \{\mathbf{z}_1, \mathbf{z}_2, \ldots, \mathbf{z}_m\}\)是所有测量数据。</p>
+                    
+                    <h4>2. 高斯因子假设</h4>
+                    <p>假设每个因子都遵循高斯分布：</p>
+                    <p>\[
+                    f_i(\mathbf{X}_i, \mathbf{z}_i) = \eta_i \exp\left(-\frac{1}{2}\|\mathbf{e}_i(\mathbf{X}_i)\|_{\boldsymbol{\Sigma}_i}^2\right)
+                    \]</p>
+                    <p>其中\(\eta_i\)是归一化常数，\(\mathbf{e}_i(\mathbf{X}_i) = \mathbf{z}_i - h_i(\mathbf{X}_i)\)是误差函数。</p>
+                    
+                    <h4>3. MAP估计问题</h4>
+                    <p>最大后验概率估计：</p>
+                    <p>\[
+                    \begin{align}
+                    \mathbf{X}^* &= \arg\max_{\mathbf{X}} p(\mathbf{X}|\mathbf{Z}) \\
+                    &= \arg\max_{\mathbf{X}} \frac{p(\mathbf{Z}|\mathbf{X}) p(\mathbf{X})}{p(\mathbf{Z})} \\
+                    &= \arg\max_{\mathbf{X}} p(\mathbf{Z}|\mathbf{X}) p(\mathbf{X}) \\
+                    &= \arg\max_{\mathbf{X}} \prod_{i=1}^{m} f_i(\mathbf{X}_i, \mathbf{z}_i)
+                    \end{align}
+                    \]</p>
+                    
+                    <h4>4. 非线性最小二乘问题</h4>
+                    <p>取负对数后得到等价的最小化问题：</p>
+                    <p>\[
+                    \mathbf{X}^* = \arg\min_{\mathbf{X}} \sum_{i=1}^{m} \left\| \mathbf{e}_i(\mathbf{X}_i) \right\|_{\boldsymbol{\Sigma}_i}^2
+                    \]</p>
+                    <p>这是一个非线性加权最小二乘问题，需要迭代求解。</p>
+                    
+                    <h4>5. 目标函数的稀疏结构</h4>
+                    <p>由于每个因子只涉及少数几个变量，雅可比矩阵\(\mathbf{J}\)和海塞矩阵\(\mathbf{H} = \mathbf{J}^T\mathbf{J}\)都具有稀疏结构，可以利用稀疏线性代数技术高效求解。</p>
+                </div>
+            </div>
+            
+            <div class="derivation-steps">
+                <h3 class="section-title">求解过程：高斯-牛顿法详细推导</h3>
+                
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3 class="step-title">目标函数定义</h3>
+                    <p>非线性最小二乘问题：</p>
+                    <p>\[
+                    F(\mathbf{X}) = \frac{1}{2} \sum_{i=1}^{m} \left\| \mathbf{e}_i(\mathbf{X}_i) \right\|_{\boldsymbol{\Sigma}_i}^2 = \frac{1}{2} \sum_{i=1}^{m} \mathbf{e}_i^T \boldsymbol{\Sigma}_i \mathbf{e}_i
+                    \]</p>
+                    <p>目标：\(\mathbf{X}^* = \arg\min_{\mathbf{X}} F(\mathbf{X})\)</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3 class="step-title">一阶条件与雅可比矩阵</h3>
+                    <p>最优性的必要条件：\(\nabla F(\mathbf{X}^*) = \mathbf{0}\)</p>
+                    <p>目标函数的梯度：</p>
+                    <p>\[
+                    \nabla F(\mathbf{X}) = \sum_{i=1}^{m} \mathbf{J}_i^T \boldsymbol{\Sigma}_i \mathbf{e}_i(\mathbf{X}_i)
+                    \]</p>
+                    <p>其中雅可比矩阵：</p>
+                    <p>\[
+                    \mathbf{J}_i = \frac{\partial \mathbf{e}_i(\mathbf{X}_i)}{\partial \mathbf{X}} \in \mathbb{R}^{m_i \times n}
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3 class="step-title">线性化与泰勒展开</h3>
+                    <p>在当前估计 \(\mathbf{X}^k\) 处对误差函数进行一阶泰勒展开：</p>
+                    <p>\[
+                    \mathbf{e}_i(\mathbf{X}^k + \boldsymbol{\delta}) \approx \mathbf{e}_i(\mathbf{X}^k) + \mathbf{J}_i^k \boldsymbol{\delta}
+                    \]</p>
+                    <p>其中\(\mathbf{J}_i^k = \mathbf{J}_i(\mathbf{X}^k)\)是在\(\mathbf{X}^k\)处计算的雅可比矩阵。</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h3 class="step-title">线性化目标函数</h3>
+                    <p>将线性化的误差函数代入目标函数：</p>
+                    <p>\[
+                    \begin{align}
+                    F(\mathbf{X}^k + \boldsymbol{\delta}) &\approx \frac{1}{2} \sum_{i=1}^{m} \left\| \mathbf{e}_i^k + \mathbf{J}_i^k \boldsymbol{\delta} \right\|_{\boldsymbol{\Sigma}_i}^2 \\
+                    &= \frac{1}{2} \sum_{i=1}^{m} (\mathbf{e}_i^k + \mathbf{J}_i^k \boldsymbol{\delta})^T \boldsymbol{\Sigma}_i (\mathbf{e}_i^k + \mathbf{J}_i^k \boldsymbol{\delta})
+                    \end{align}
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <h3 class="step-title">正规方程推导</h3>
+                    <p>对\(\boldsymbol{\delta}\)求导并令其为零：</p>
+                    <p>\[
+                    \frac{\partial F}{\partial \boldsymbol{\delta}} = \sum_{i=1}^{m} (\mathbf{J}_i^k)^T \boldsymbol{\Sigma}_i (\mathbf{e}_i^k + \mathbf{J}_i^k \boldsymbol{\delta}) = \mathbf{0}
+                    \]</p>
+                    <p>整理得到正规方程（Normal Equations）：</p>
+                    <p>\[
+                    \left( \sum_{i=1}^{m} (\mathbf{J}_i^k)^T \boldsymbol{\Sigma}_i \mathbf{J}_i^k \right) \boldsymbol{\delta} = -\sum_{i=1}^{m} (\mathbf{J}_i^k)^T \boldsymbol{\Sigma}_i \mathbf{e}_i^k
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <h3 class="step-title">海塞矩阵与梯度向量</h3>
+                    <p>定义高斯-牛顿海塞矩阵和梯度向量：</p>
+                    <p>\[
+                    \mathbf{H}_{GN} = \sum_{i=1}^{m} (\mathbf{J}_i^k)^T \boldsymbol{\Sigma}_i \mathbf{J}_i^k \in \mathbb{R}^{n \times n}
+                    \]</p>
+                    <p>\[
+                    \mathbf{g} = \sum_{i=1}^{m} (\mathbf{J}_i^k)^T \boldsymbol{\Sigma}_i \mathbf{e}_i^k \in \mathbb{R}^{n}
+                    \]</p>
+                    <p>正规方程简化为：\(\mathbf{H}_{GN} \boldsymbol{\delta} = -\mathbf{g}\)</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <h3 class="step-title">稀疏线性系统求解</h3>
+                    <p>由于\(\mathbf{H}_{GN}\)具有稀疏结构，可使用高效的稀疏求解器：</p>
+                    <ul>
+                        <li><strong>Cholesky分解</strong>：\(\mathbf{H}_{GN} = \mathbf{L}\mathbf{L}^T\)，适用于正定矩阵</li>
+                        <li><strong>LU分解</strong>：\(\mathbf{H}_{GN} = \mathbf{L}\mathbf{U}\)，适用于一般矩阵</li>
+                        <li><strong>QR分解</strong>：直接对\(\mathbf{J}\)进行QR分解，数值稳定性更好</li>
+                    </ul>
+                    <p>求解增量：\(\boldsymbol{\delta} = -\mathbf{H}_{GN}^{-1} \mathbf{g}\)</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">8</div>
+                    <h3 class="step-title">流形上的状态更新</h3>
+                    <p>对于欧几里得空间中的变量：</p>
+                    <p>\[
+                    \mathbf{X}^{k+1} = \mathbf{X}^k + \boldsymbol{\delta}
+                    \]</p>
+                    <p>对于流形上的变量（如旋转\(\mathbf{R} \in SO(3)\)）：</p>
+                    <p>\[
+                    \mathbf{X}^{k+1} = \mathbf{X}^k \boxplus \boldsymbol{\delta}
+                    \]</p>
+                    <p>例如，对于旋转矩阵：\(\mathbf{R}^{k+1} = \mathbf{R}^k \exp([\boldsymbol{\delta}_{\theta}]_{\times})\)</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">9</div>
+                    <h3 class="step-title">收敛性判断</h3>
+                    <p>迭代停止条件：</p>
+                    <ul>
+                        <li><strong>梯度范数</strong>：\(\|\mathbf{g}\| < \epsilon_g\)</li>
+                        <li><strong>参数增量</strong>：\(\|\boldsymbol{\delta}\| < \epsilon_x\)</li>
+                        <li><strong>目标函数变化</strong>：\(|F^{k+1} - F^k| < \epsilon_f\)</li>
+                        <li><strong>最大迭代次数</strong>：\(k > k_{\max}\)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">K</div>
+                <h2 class="card-title">误差状态迭代卡尔曼滤波（ESIKF）</h2>
+            </div>
+            
+            <p>误差状态迭代卡尔曼滤波（Error-State Iterative Kalman Filter, ESIKF）是一种专门处理流形状态空间的滤波算法，广泛应用于SLAM、IMU导航和机器人定位系统。它通过将状态分解为名义状态和误差状态，有效解决了传统EKF在处理旋转等非线性流形时的数值稳定性和一致性问题。</p>
+            
+            <h3 class="section-title">ESIKF变量定义与符号说明</h3>
+            
+            <table class="variable-table">
+                <thead>
+                    <tr>
+                        <th>符号</th>
+                        <th>描述</th>
+                        <th>维度</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>\(\mathbf{X}\)</td>
+                        <td>真实状态向量</td>
+                        <td>\(n\)</td>
+                        <td>存在于流形\(\mathcal{M}\)上</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{X}_{\text{nom}}\)</td>
+                        <td>名义状态</td>
+                        <td>\(n\)</td>
+                        <td>状态的主要部分，通过运动模型传播</td>
+                    </tr>
+                    <tr>
+                        <td>\(\delta\mathbf{X}\)</td>
+                        <td>误差状态向量</td>
+                        <td>\(m \leq n\)</td>
+                        <td>存在于切空间\(T\mathcal{M}\)中</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{F}_k\)</td>
+                        <td>误差状态转移矩阵</td>
+                        <td>\(m \times m\)</td>
+                        <td>\(\mathbf{F}_k = \frac{\partial f_{\delta}}{\partial \delta\mathbf{X}}\)</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{H}_k\)</td>
+                        <td>观测雅可比矩阵</td>
+                        <td>\(p \times m\)</td>
+                        <td>\(\mathbf{H}_k = \frac{\partial h}{\partial \delta\mathbf{X}}\)</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{P}_k\)</td>
+                        <td>误差状态协方差矩阵</td>
+                        <td>\(m \times m\)</td>
+                        <td>\(\mathbf{P}_k = \text{Cov}(\delta\mathbf{X}_k)\)</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{Q}_k\)</td>
+                        <td>过程噪声协方差</td>
+                        <td>\(m \times m\)</td>
+                        <td>系统动力学噪声</td>
+                    </tr>
+                    <tr>
+                        <td>\(\mathbf{R}_k\)</td>
+                        <td>观测噪声协方差</td>
+                        <td>\(p \times p\)</td>
+                        <td>传感器测量噪声</td>
+                    </tr>
+                    <tr>
+                        <td>\(\boxplus\)</td>
+                        <td>流形加法操作</td>
+                        <td>-</td>
+                        <td>将切空间向量映射到流形</td>
+                    </tr>
+                    <tr>
+                        <td>\(\boxminus\)</td>
+                        <td>流形减法操作</td>
+                        <td>-</td>
+                        <td>计算流形上两点的切向量</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="key-concept">
+                <h3 class="section-title">核心思想与状态分解</h3>
+                
+                <h4>1. 状态空间分解</h4>
+                <p>ESIKF的核心思想是将流形上的状态\(\mathbf{X} \in \mathcal{M}\)分解为：</p>
+                <p>\[
+                \mathbf{X} = \mathbf{X}_{\text{nom}} \boxplus \delta\mathbf{X}
+                \]</p>
+                <p>其中：</p>
+                <ul>
+                    <li><strong>名义状态</strong> \(\mathbf{X}_{\text{nom}} \in \mathcal{M}\)：状态的主要部分，通过非线性运动模型传播</li>
+                    <li><strong>误差状态</strong> \(\delta\mathbf{X} \in T_{\mathbf{X}_{\text{nom}}}\mathcal{M}\)：小的扰动，存在于名义状态处的切空间</li>
+                    <li><strong>流形加法</strong> \(\boxplus: \mathcal{M} \times T\mathcal{M} \to \mathcal{M}\)：将切空间向量映射到流形上</li>
+                </ul>
+                
+                <h4>2. 理论优势</h4>
+                <p>这种分解带来以下优势：</p>
+                <ul>
+                    <li><strong>线性化精度</strong>：误差状态在小邻域内，线性化误差小</li>
+                    <li><strong>数值稳定性</strong>：避免了流形上的奇点和约束</li>
+                    <li><strong>一致性保证</strong>：误差状态在更新后重置为零</li>
+                    <li><strong>计算效率</strong>：误差状态维度通常小于名义状态</li>
+                </ul>
+                
+                <h4>3. 具体实例：位姿状态</h4>
+                <p>对于位姿状态\(\mathbf{X} = [\mathbf{p}^T, \mathbf{q}^T]^T\)，其中\(\mathbf{p} \in \mathbb{R}^3\)是位置，\(\mathbf{q} \in \mathbb{H}\)是四元数旋转：</p>
+                <p>\[
+                \begin{bmatrix} \mathbf{p} \\ \mathbf{q} \end{bmatrix} = \begin{bmatrix} \mathbf{p}_{\text{nom}} \\ \mathbf{q}_{\text{nom}} \end{bmatrix} \boxplus \begin{bmatrix} \delta\mathbf{p} \\ \delta\boldsymbol{\theta} \end{bmatrix}
+                \]</p>
+                <p>具体实现为：</p>
+                <p>\[
+                \begin{align}
+                \mathbf{p} &= \mathbf{p}_{\text{nom}} + \delta\mathbf{p} \\
+                \mathbf{q} &= \mathbf{q}_{\text{nom}} \otimes \exp\left(\frac{1}{2}\delta\boldsymbol{\theta}\right)
+                \end{align}
+                \]</p>
+                <p>其中\(\otimes\)是四元数乘法，\(\exp(\cdot)\)是四元数指数映射。</p>
+            </div>
+            
+            <h3 class="section-title">ESIKF算法流程与数学推导</h3>
+            
+            <div class="content-container">
+                <div class="math-formula">
+                    <h3>1. 预测步骤（Prediction Step）</h3>
+                    
+                    <h4>a) 名义状态传播</h4>
+                    <p>使用非线性运动模型传播名义状态：</p>
+                    <p>\[
+                    \mathbf{X}_{\text{nom},k|k-1} = f(\mathbf{X}_{\text{nom},k-1|k-1}, \mathbf{u}_k, \mathbf{w}_k)
+                    \]</p>
+                    <p>其中\(f(\cdot)\)是非线性运动模型，\(\mathbf{u}_k\)是控制输入，\(\mathbf{w}_k\)是过程噪声。</p>
+                    
+                    <h4>b) 误差状态传播</h4>
+                    <p>误差状态在切空间中线性传播：</p>
+                    <p>\[
+                    \delta\mathbf{X}_{k|k-1} = \mathbf{F}_k \delta\mathbf{X}_{k-1|k-1} + \mathbf{G}_k \mathbf{w}_k
+                    \]</p>
+                    <p>其中误差状态转移矩阵：</p>
+                    <p>\[
+                    \mathbf{F}_k = \frac{\partial f_{\delta}(\delta\mathbf{X}, \mathbf{u}_k)}{\partial \delta\mathbf{X}}\bigg|_{\delta\mathbf{X}=\mathbf{0}}
+                    \]</p>
+                    <p>噪声雅可比矩阵：</p>
+                    <p>\[
+                    \mathbf{G}_k = \frac{\partial f_{\delta}(\delta\mathbf{X}, \mathbf{u}_k)}{\partial \mathbf{w}}\bigg|_{\delta\mathbf{X}=\mathbf{0}}
+                    \]</p>
+                    
+                    <h4>c) 协方差传播</h4>
+                    <p>\[
+                    \mathbf{P}_{k|k-1} = \mathbf{F}_k \mathbf{P}_{k-1|k-1} \mathbf{F}_k^T + \mathbf{G}_k \mathbf{Q}_k \mathbf{G}_k^T
+                    \]</p>
+                    
+                    <h3>2. 更新步骤（Update Step）</h3>
+                    
+                    <h4>a) 创新计算</h4>
+                    <p>计算测量预测值和创新：</p>
+                    <p>\[
+                    \begin{align}
+                    \hat{\mathbf{z}}_{k|k-1} &= h(\mathbf{X}_{\text{nom},k|k-1}) \\
+                    \boldsymbol{\nu}_k &= \mathbf{z}_k - \hat{\mathbf{z}}_{k|k-1}
+                    \end{align}
+                    \]</p>
+                    
+                    <h4>b) 观测雅可比矩阵</h4>
+                    <p>\[
+                    \mathbf{H}_k = \frac{\partial h(\mathbf{X}_{\text{nom}} \boxplus \delta\mathbf{X})}{\partial \delta\mathbf{X}}\bigg|_{\delta\mathbf{X}=\mathbf{0}}
+                    \]</p>
+                    
+                    <h4>c) 卡尔曼增益和状态更新</h4>
+                    <p>\[
+                    \begin{aligned}
+                    \mathbf{S}_k &= \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^T + \mathbf{R}_k \\
+                    \mathbf{K}_k &= \mathbf{P}_{k|k-1} \mathbf{H}_k^T \mathbf{S}_k^{-1} \\
+                    \delta\mathbf{X}_{k|k} &= \mathbf{K}_k \boldsymbol{\nu}_k \\
+                    \mathbf{P}_{k|k} &= (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}
+                    \end{aligned}
+                    \]</p>
+                    
+                    <h4>d) 名义状态更新与误差状态重置</h4>
+                    <p>\[
+                    \begin{align}
+                    \mathbf{X}_{\text{nom},k|k} &= \mathbf{X}_{\text{nom},k|k-1} \boxplus \delta\mathbf{X}_{k|k} \\
+                    \delta\mathbf{X}_{k|k} &\leftarrow \mathbf{0}
+                    \end{align}
+                    \]</p>
+                    <p><strong>注意</strong>：误差状态在更新后重置为零，这是ESIKF的关键特性。</p>
+                </div>
+                
+                <div class="algorithm-box">
+                    <h3>ESIKF算法流程总结</h3>
+                    <div class="algorithm">
+                        <p><strong>输入</strong>：初始名义状态\(\mathbf{X}_{\text{nom},0}\)，初始协方差\(\mathbf{P}_0\)</p>
+                        <p><strong>输出</strong>：最优状态估计\(\mathbf{X}_{\text{nom},k|k}\)和协方差\(\mathbf{P}_{k|k}\)</p>
+                        <ol>
+                            <li><strong>初始化</strong>：\(\delta\mathbf{X}_0 = \mathbf{0}\)</li>
+                            <li><strong>对于每个时刻</strong> \(k = 1, 2, \ldots\)：
+                                <ol type="a">
+                                    <li><strong>预测步骤</strong>：
+                                        <ul>
+                                            <li>名义状态传播：\(\mathbf{X}_{\text{nom},k|k-1} = f(\mathbf{X}_{\text{nom},k-1|k-1}, \mathbf{u}_k)\)</li>
+                                            <li>计算雅可比矩阵：\(\mathbf{F}_k, \mathbf{G}_k\)</li>
+                                            <li>协方差传播：\(\mathbf{P}_{k|k-1} = \mathbf{F}_k \mathbf{P}_{k-1|k-1} \mathbf{F}_k^T + \mathbf{G}_k \mathbf{Q}_k \mathbf{G}_k^T\)</li>
+                                        </ul>
+                                    </li>
+                                    <li><strong>更新步骤</strong>（如果有测量\(\mathbf{z}_k\)）：
+                                        <ul>
+                                            <li>计算创新：\(\boldsymbol{\nu}_k = \mathbf{z}_k - h(\mathbf{X}_{\text{nom},k|k-1})\)</li>
+                                            <li>计算观测雅可比：\(\mathbf{H}_k\)</li>
+                                            <li>计算卡尔曼增益：\(\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^T (\mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^T + \mathbf{R}_k)^{-1}\)</li>
+                                            <li>更新误差状态：\(\delta\mathbf{X}_{k|k} = \mathbf{K}_k \boldsymbol{\nu}_k\)</li>
+                                            <li>更新协方差：\(\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}\)</li>
+                                            <li>更新名义状态：\(\mathbf{X}_{\text{nom},k|k} = \mathbf{X}_{\text{nom},k|k-1} \boxplus \delta\mathbf{X}_{k|k}\)</li>
+                                            <li>重置误差状态：\(\delta\mathbf{X}_{k|k} \leftarrow \mathbf{0}\)</li>
+                                        </ul>
+                                    </li>
+                                </ol>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="derivation-steps">
+                <h3 class="section-title">误差状态详细推导</h3>
+                
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3 class="step-title">状态空间定义</h3>
+                    <p>考虑一个包含位置、旋转、速度和角速度的完整状态：</p>
+                    <p>\[
+                    \mathbf{X} = \begin{bmatrix} \mathbf{p} \\ \mathbf{R} \\ \mathbf{v} \\ \boldsymbol{\omega} \end{bmatrix} \in \mathbb{R}^3 \times SO(3) \times \mathbb{R}^3 \times \mathbb{R}^3
+                    \]</p>
+                    <p>对应的误差状态在切空间中定义为：</p>
+                    <p>\[
+                    \delta\mathbf{X} = \begin{bmatrix} \delta\mathbf{p} \\ \delta\boldsymbol{\theta} \\ \delta\mathbf{v} \\ \delta\boldsymbol{\omega} \end{bmatrix} \in \mathbb{R}^{12}
+                    \]</p>
+                    <p>其中：</p>
+                    <ul>
+                        <li>\(\delta\mathbf{p} \in \mathbb{R}^3\)：位置误差</li>
+                        <li>\(\delta\boldsymbol{\theta} \in \mathbb{R}^3\)：旋转误差（李代数表示）</li>
+                        <li>\(\delta\mathbf{v} \in \mathbb{R}^3\)：速度误差</li>
+                        <li>\(\delta\boldsymbol{\omega} \in \mathbb{R}^3\)：角速度误差</li>
+                    </ul>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3 class="step-title">流形加法操作</h3>
+                    <p>状态更新通过流形加法实现：</p>
+                    <p>\[
+                    \mathbf{X} = \mathbf{X}_{\text{nom}} \boxplus \delta\mathbf{X}
+                    \]</p>
+                    <p>具体实现为：</p>
+                    <p>\[
+                    \begin{bmatrix} \mathbf{p} \\ \mathbf{R} \\ \mathbf{v} \\ \boldsymbol{\omega} \end{bmatrix} = \begin{bmatrix} \mathbf{p}_{\text{nom}} + \delta\mathbf{p} \\ \mathbf{R}_{\text{nom}} \exp([\delta\boldsymbol{\theta}]_\times) \\ \mathbf{v}_{\text{nom}} + \delta\mathbf{v} \\ \boldsymbol{\omega}_{\text{nom}} + \delta\boldsymbol{\omega} \end{bmatrix}
+                    \]</p>
+                    <p>其中\([\cdot]_\times\)表示反对称矩阵操作，\(\exp(\cdot)\)是SO(3)上的指数映射。</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3 class="step-title">指数映射与反对称矩阵</h3>
+                    <p>对于向量\(\boldsymbol{\phi} \in \mathbb{R}^3\)，其反对称矩阵定义为：</p>
+                    <p>\[
+                    [\boldsymbol{\phi}]_\times = \begin{bmatrix} 0 & -\phi_z & \phi_y \\ \phi_z & 0 & -\phi_x \\ -\phi_y & \phi_x & 0 \end{bmatrix}
+                    \]</p>
+                    <p>SO(3)上的指数映射可以通过Rodrigues公式计算：</p>
+                    <p>\[
+                    \exp([\boldsymbol{\phi}]_\times) = \mathbf{I} + \frac{\sin\|\boldsymbol{\phi}\|}{\|\boldsymbol{\phi}\|}[\boldsymbol{\phi}]_\times + \frac{1-\cos\|\boldsymbol{\phi}\|}{\|\boldsymbol{\phi}\|^2}[\boldsymbol{\phi}]_\times^2
+                    \]</p>
+                    <p>对于小角度\(\|\boldsymbol{\phi}\| \ll 1\)，可以近似为：</p>
+                    <p>\[
+                    \exp([\boldsymbol{\phi}]_\times) \approx \mathbf{I} + [\boldsymbol{\phi}]_\times
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h3 class="step-title">IMU运动模型</h3>
+                    <p>考虑基于IMU的运动模型，名义状态的连续时间传播为：</p>
+                    <p>\[
+                    \begin{align}
+                    \dot{\mathbf{p}} &= \mathbf{v} \\
+                    \dot{\mathbf{R}} &= \mathbf{R} [\boldsymbol{\omega}]_\times \\
+                    \dot{\mathbf{v}} &= \mathbf{R} \mathbf{a} + \mathbf{g} \\
+                    \dot{\boldsymbol{\omega}} &= \boldsymbol{\alpha}
+                    \end{align}
+                    \]</p>
+                    <p>其中\(\mathbf{a}\)是加速度计测量，\(\mathbf{g}\)是重力加速度，\(\boldsymbol{\alpha}\)是角加速度。</p>
+                    
+                    <p>离散化后的名义状态传播：</p>
+                    <p>\[
+                    \begin{bmatrix} \mathbf{p}_{k+1} \\ \mathbf{R}_{k+1} \\ \mathbf{v}_{k+1} \\ \boldsymbol{\omega}_{k+1} \end{bmatrix} = \begin{bmatrix} \mathbf{p}_k + \mathbf{v}_k \Delta t + \frac{1}{2}(\mathbf{R}_k \mathbf{a}_k + \mathbf{g})\Delta t^2 \\ \mathbf{R}_k \exp([\boldsymbol{\omega}_k \Delta t]_\times) \\ \mathbf{v}_k + (\mathbf{R}_k \mathbf{a}_k + \mathbf{g})\Delta t \\ \boldsymbol{\omega}_k + \boldsymbol{\alpha}_k \Delta t \end{bmatrix}
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <h3 class="step-title">误差状态动力学</h3>
+                    <p>误差状态的连续时间动力学方程：</p>
+                    <p>\[
+                    \begin{align}
+                    \delta\dot{\mathbf{p}} &= \delta\mathbf{v} \\
+                    \delta\dot{\boldsymbol{\theta}} &= -[\boldsymbol{\omega}]_\times \delta\boldsymbol{\theta} + \delta\boldsymbol{\omega} \\
+                    \delta\dot{\mathbf{v}} &= -\mathbf{R}[\mathbf{a}]_\times \delta\boldsymbol{\theta} + \mathbf{R} \delta\mathbf{a} \\
+                    \delta\dot{\boldsymbol{\omega}} &= \delta\boldsymbol{\alpha}
+                    \end{align}
+                    \]</p>
+                    <p>其中\(\delta\mathbf{a}\)和\(\delta\boldsymbol{\alpha}\)是加速度和角加速度的噪声。</p>
+                    
+                    <p>矩阵形式：</p>
+                    <p>\[
+                    \delta\dot{\mathbf{X}} = \mathbf{F}_c \delta\mathbf{X} + \mathbf{G}_c \mathbf{w}
+                    \]</p>
+                    <p>其中连续时间系统矩阵：</p>
+                    <p>\[
+                    \mathbf{F}_c = \begin{bmatrix}
+                    \mathbf{0} & \mathbf{0} & \mathbf{I} & \mathbf{0} \\
+                    \mathbf{0} & -[\boldsymbol{\omega}]_\times & \mathbf{0} & \mathbf{I} \\
+                    \mathbf{0} & -\mathbf{R}[\mathbf{a}]_\times & \mathbf{0} & \mathbf{0} \\
+                    \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0}
+                    \end{bmatrix}
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <h3 class="step-title">离散化与雅可比矩阵</h3>
+                    <p>使用一阶欧拉方法离散化：</p>
+                    <p>\[
+                    \mathbf{F}_k = \exp(\mathbf{F}_c \Delta t) \approx \mathbf{I} + \mathbf{F}_c \Delta t
+                    \]</p>
+                    <p>具体的离散时间转移矩阵：</p>
+                    <p>\[
+                    \mathbf{F}_k = \begin{bmatrix}
+                    \mathbf{I} & \mathbf{0} & \mathbf{I}\Delta t & \mathbf{0} \\
+                    \mathbf{0} & \mathbf{I} - [\boldsymbol{\omega}_k]_\times \Delta t & \mathbf{0} & \mathbf{I}\Delta t \\
+                    \mathbf{0} & -\mathbf{R}_k[\mathbf{a}_k]_\times \Delta t & \mathbf{I} & \mathbf{0} \\
+                    \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{I}
+                    \end{bmatrix}
+                    \]</p>
+                    
+                    <p>噪声雅可比矩阵：</p>
+                    <p>\[
+                    \mathbf{G}_k = \begin{bmatrix}
+                    \mathbf{0} & \mathbf{0} \\
+                    \mathbf{I}\Delta t & \mathbf{0} \\
+                    \mathbf{0} & \mathbf{R}_k \Delta t \\
+                    \mathbf{0} & \mathbf{I}\Delta t
+                    \end{bmatrix}
+                    \]</p>
+                </div>
+                    \]</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h3 class="step-title">观测模型</h3>
+                    <p>观测函数：</p>
+                    <p>\[
+                    \mathbf{z} = h(\mathbf{X}) + \mathbf{v} = h(\mathbf{X}_{\text{nom}} \boxplus \delta\mathbf{X}) + \mathbf{v}
+                    \]</p>
+                    <p>线性化：</p>
+                    <p>\[
+                    \mathbf{z} \approx h(\mathbf{X}_{\text{nom}}) + \mathbf{H} \delta\mathbf{X} + \mathbf{v}
+                    \]</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">∫</div>
+                <h2 class="card-title">数学推导与实例分析</h2>
+            </div>
+            
+            <h3 class="section-title">因子图优化推导实例</h3>
+            
+            <div class="content-container">
+                <div class="math-formula">
+                    <h3>SLAM问题定义</h3>
+                    <p>考虑一个简单SLAM系统：</p>
+                    <ul>
+                        <li>状态：\(\mathbf{X} = \{\mathbf{x}_0, \mathbf{x}_1, \mathbf{x}_2, \mathbf{l}_1, \mathbf{l}_2\}\)</li>
+                        <li>因子：
+                            <ul>
+                                <li>先验：\(f_0(\mathbf{x}_0)\)</li>
+                                <li>里程计：\(f_1(\mathbf{x}_0, \mathbf{x}_1)\), \(f_2(\mathbf{x}_1, \mathbf{x}_2)\)</li>
+                                <li>观测：\(f_3(\mathbf{x}_1, \mathbf{l}_1)\), \(f_4(\mathbf{x}_2, \mathbf{l}_1)\), \(f_5(\mathbf{x}_2, \mathbf{l}_2)\)</li>
+                            </ul>
+                        </li>
+                    </ul>
+                    
+                    <h3>目标函数</h3>
+                    <p>\[
+                    F(\mathbf{X}) = \Vert \mathbf{e}_0 \Vert^2 + \Vert \mathbf{e}_1 \Vert^2 + \Vert \mathbf{e}_2 \Vert^2 + \Vert \mathbf{e}_3 \Vert^2 + \Vert \mathbf{e}_4 \Vert^2 + \Vert \mathbf{e}_5 \Vert^2
+                    \]</p>
+                </div>
+                
+                <div class="math-formula">
+                    <h3>雅可比矩阵结构</h3>
+                    <p>\[
+                    \mathbf{J} = \begin{bmatrix}
+                    \frac{\partial \mathbf{e}_0}{\partial \mathbf{x}_0} & 0 & 0 & 0 & 0 \\
+                    \frac{\partial \mathbf{e}_1}{\partial \mathbf{x}_0} & \frac{\partial \mathbf{e}_1}{\partial \mathbf{x}_1} & 0 & 0 & 0 \\
+                    0 & \frac{\partial \mathbf{e}_2}{\partial \mathbf{x}_1} & \frac{\partial \mathbf{e}_2}{\partial \mathbf{x}_2} & 0 & 0 \\
+                    0 & \frac{\partial \mathbf{e}_3}{\partial \mathbf{x}_1} & 0 & \frac{\partial \mathbf{e}_3}{\partial \mathbf{l}_1} & 0 \\
+                    0 & 0 & \frac{\partial \mathbf{e}_4}{\partial \mathbf{x}_2} & \frac{\partial \mathbf{e}_4}{\partial \mathbf{l}_1} & 0 \\
+                    0 & 0 & \frac{\partial \mathbf{e}_5}{\partial \mathbf{x}_2} & 0 & \frac{\partial \mathbf{e}_5}{\partial \mathbf{l}_2}
+                    \end{bmatrix}
+                    \]</p>
+                    
+                    <h3>正规方程</h3>
+                    <p>\[
+                    \mathbf{J}^T \mathbf{J} \Delta\mathbf{X} = -\mathbf{J}^T \mathbf{e}
+                    \]</p>
+                    <p>由于 \(\mathbf{J}^T \mathbf{J}\) 是稀疏矩阵，可以使用稀疏求解器高效求解。</p>
+                </div>
+            </div>
+            
+            <h3 class="section-title">ESIKF推导实例</h3>
+            
+            <div class="content-container">
+                <div class="math-formula">
+                    <h3>旋转状态处理</h3>
+                    <p>对于旋转矩阵 \(\mathbf{R}\)，误差状态为：</p>
+                    <p>\[
+                    \mathbf{R} = \mathbf{R}_{\text{nom}} \exp(\delta\boldsymbol{\theta}^\wedge)
+                    \]</p>
+                    
+                    <h3>旋转导数</h3>
+                    <p>旋转对李代数的导数：</p>
+                    <p>\[
+                    \frac{\partial \mathbf{R} \mathbf{v}}{\partial \delta\boldsymbol{\theta}} = -\mathbf{R} (\mathbf{v})^\wedge
+                    \]</p>
+                    
+                    <h3>观测模型雅可比</h3>
+                    <p>对于点观测 \(\mathbf{z} = \mathbf{R}^T (\mathbf{p} - \mathbf{q})\)：</p>
+                    <p>\[
+                    \frac{\partial \mathbf{z}}{\partial \delta\boldsymbol{\theta}} = -(\mathbf{R}^T (\mathbf{p} - \mathbf{q}))^\wedge
+                    \]</p>
+                </div>
+                
+                <div class="math-formula">
+                    <h3>ESIKF更新步骤</h3>
+                    <p>卡尔曼增益：</p>
+                    <p>\[
+                    \mathbf{K} = \mathbf{P} \mathbf{H}^T (\mathbf{H} \mathbf{P} \mathbf{H}^T + \mathbf{R})^{-1}
+                    \]</p>
+                    
+                    <p>误差状态更新：</p>
+                    <p>\[
+                    \delta\mathbf{X} = \mathbf{K} (\mathbf{z} - \hat{\mathbf{z}})
+                    \]</p>
+                    
+                    <p>名义状态更新：</p>
+                    <p>\[
+                    \mathbf{R}_{\text{new}} = \mathbf{R} \exp((\mathbf{K}_\theta (\mathbf{z} - \hat{\mathbf{z}}))^\wedge)
+                    \]</p>
+                    <p>\[
+                    \mathbf{p}_{\text{new}} = \mathbf{p} + \mathbf{K}_p (\mathbf{z} - \hat{\mathbf{z}})
+                    \]</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">↔</div>
+                <h2 class="card-title">应用场景与对比分析</h2>
+            </div>
+            
+            <div class="comparison-chart">
+                <canvas id="comparisonChart"></canvas>
+            </div>
+            
+            <div class="content-container">
+                <div class="math-formula">
+                    <h3>因子图优化特点</h3>
+                    <ul>
+                        <li>适用于全局优化问题</li>
+                        <li>能有效处理回环检测</li>
+                        <li>计算复杂度较高（O(n³)）</li>
+                        <li>通常作为后端优化</li>
+                        <li>实现：g2o, Ceres, GTSAM</li>
+                    </ul>
+                    
+                    <h3>典型应用场景</h3>
+                    <ul>
+                        <li>全局位姿图优化</li>
+                        <li>带回环检测的SLAM</li>
+                        <li>大规模建图</li>
+                        <li>BA（Bundle Adjustment）</li>
+                    </ul>
+                </div>
+                
+                <div class="math-formula">
+                    <h3>ESIKF特点</h3>
+                    <ul>
+                        <li>适用于实时状态估计</li>
+                        <li>处理流形状态自然</li>
+                        <li>计算效率高（O(n²)）</li>
+                        <li>通常作为前端里程计</li>
+                        <li>实现：FAST-LIO, R3LIVE</li>
+                    </ul>
+                    
+                    <h3>典型应用场景</h3>
+                    <ul>
+                        <li>LiDAR-惯性里程计</li>
+                        <li>视觉-惯性里程计</li>
+                        <li>实时位姿估计</li>
+                        <li>传感器融合</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <h3 class="section-title">系统架构建议</h3>
+            
+            <div class="key-concept">
+                <p>在实际SLAM系统中，通常结合使用ESIKF和因子图优化：</p>
+                <ol>
+                    <li>前端：使用ESIKF进行实时状态估计和传感器融合</li>
+                    <li>后端：使用因子图优化进行全局一致性和回环校正</li>
+                </ol>
+                <p>这种组合兼顾了实时性和全局一致性，如LIO-SAM, VINS-Mono等系统采用此架构。</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>因子图优化与ESIKF详解 | 数学推导与可视化 | SLAM系统核心算法</p>
+        </div>
+    </div>
+    
+    <script>
+        // Draw factor graph
+        function drawFactorGraph() {
+            const container = document.getElementById('factor-graph');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Draw title
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('因子图结构示例', width/2, 20);
+            
+            // Define node positions
+            const nodes = [
+                { id: 'x0', type: 'variable', x: width*0.2, y: height*0.4, color: '#3498db' },
+                { id: 'x1', type: 'variable', x: width*0.4, y: height*0.4, color: '#3498db' },
+                { id: 'x2', type: 'variable', x: width*0.6, y: height*0.4, color: '#3498db' },
+                { id: 'l1', type: 'variable', x: width*0.4, y: height*0.7, color: '#2ecc71' },
+                { id: 'l2', type: 'variable', x: width*0.6, y: height*0.7, color: '#2ecc71' },
+                { id: 'f0', type: 'factor', x: width*0.2, y: height*0.2, color: '#e74c3c' },
+                { id: 'f1', type: 'factor', x: width*0.3, y: height*0.4, color: '#9b59b6' },
+                { id: 'f2', type: 'factor', x: width*0.5, y: height*0.4, color: '#9b59b6' },
+                { id: 'f3', type: 'factor', x: width*0.4, y: height*0.55, color: '#f39c12' },
+                { id: 'f4', type: 'factor', x: width*0.5, y: height*0.6, color: '#f39c12' },
+                { id: 'f5', type: 'factor', x: width*0.6, y: height*0.65, color: '#f39c12' }
+            ];
+            
+            // Draw connections
+            const connections = [
+                ['f0', 'x0'], ['f1', 'x0'], ['f1', 'x1'], 
+                ['f2', 'x1'], ['f2', 'x2'], ['f3', 'x1'],
+                ['f3', 'l1'], ['f4', 'x2'], ['f4', 'l1'],
+                ['f5', 'x2'], ['f5', 'l2']
+            ];
+            
+            // Draw connections first
+            ctx.strokeStyle = '#95a5a6';
+            ctx.lineWidth = 1.5;
+            connections.forEach(conn => {
+                const from = nodes.find(n => n.id === conn[0]);
+                const to = nodes.find(n => n.id === conn[1]);
+                ctx.beginPath();
+                ctx.moveTo(from.x, from.y);
+                ctx.lineTo(to.x, to.y);
+                ctx.stroke();
+            });
+            
+            // Draw nodes
+            nodes.forEach(node => {
+                if (node.type === 'variable') {
+                    ctx.fillStyle = node.color;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 20, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#2c3e50';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(node.id, node.x, node.y);
+                } else {
+                    ctx.fillStyle = node.color;
+                    ctx.fillRect(node.x - 15, node.y - 15, 30, 30);
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(node.id, node.x, node.y);
+                }
+            });
+            
+            // Draw legend
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillText('变量节点 (位姿)', width*0.15, height*0.9);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillText('变量节点 (路标)', width*0.4, height*0.9);
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillText('先验因子', width*0.6, height*0.9);
+            ctx.fillStyle = '#9b59b6';
+            ctx.fillText('里程计因子', width*0.75, height*0.9);
+            ctx.fillStyle = '#f39c12';
+            ctx.fillText('观测因子', width*0.9, height*0.9);
+        }
+        
+        // Draw ESIKF diagram
+        function drawESKFDiagram() {
+            const container = document.getElementById('eskf-diagram');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Draw title
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('ESIKF 工作流程', width/2, 20);
+            
+            // Draw blocks
+            const blockWidth = 120;
+            const blockHeight = 60;
+            const arrowLength = 50;
+            
+            // Initialization
+            drawBlock(ctx, width*0.2, height*0.3, blockWidth, blockHeight, '初始化状态', '#3498db');
+            
+            // Prediction
+            drawBlock(ctx, width*0.5, height*0.3, blockWidth, blockHeight, '状态预测', '#2ecc71');
+            drawArrow(ctx, width*0.2 + blockWidth, height*0.3 + blockHeight/2, 
+                     width*0.5, height*0.3 + blockHeight/2, arrowLength);
+            
+            // Measurement
+            drawBlock(ctx, width*0.5, height*0.6, blockWidth, blockHeight, '观测更新', '#9b59b6');
+            drawArrow(ctx, width*0.5 + blockWidth/2, height*0.3 + blockHeight, 
+                     width*0.5 + blockWidth/2, height*0.6, arrowLength/2, true);
+            
+            // Update
+            drawBlock(ctx, width*0.8, height*0.3, blockWidth, blockHeight, '状态更新', '#e74c3c');
+            drawArrow(ctx, width*0.5 + blockWidth, height*0.3 + blockHeight/2, 
+                     width*0.8, height*0.3 + blockHeight/2, arrowLength);
+            
+            // Draw error state
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'italic 14px Arial';
+            ctx.fillText('误差状态空间', width*0.5, height*0.4);
+            
+            // Draw legend
+            ctx.fillStyle = '#7f8c8d';
+            ctx.fillText('IMU数据', width*0.35, height*0.35);
+            ctx.fillText('观测数据', width*0.6, height*0.5);
+        }
+        
+        function drawBlock(ctx, x, y, width, height, text, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x + width/2, y + height/2);
+        }
+        
+        function drawArrow(ctx, fromX, fromY, toX, toY, length, isVertical = false) {
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            
+            if (isVertical) {
+                ctx.lineTo(fromX, toY);
+            } else {
+                ctx.lineTo(toX, toY);
+            }
+            
+            ctx.stroke();
+            
+            // Draw arrowhead
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            const headLength = 10;
+            
+            ctx.fillStyle = '#2c3e50';
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(
+                toX - headLength * Math.cos(angle - Math.PI/6),
+                toY - headLength * Math.sin(angle - Math.PI/6)
+            );
+            ctx.lineTo(
+                toX - headLength * Math.cos(angle + Math.PI/6),
+                toY - headLength * Math.sin(angle + Math.PI/6)
+            );
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Draw comparison chart
+        function drawComparisonChart() {
+            const ctx = document.getElementById('comparisonChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['实时性', '全局一致性', '回环处理', '计算效率', '实现复杂度', '流形处理'],
+                    datasets: [
+                        {
+                            label: '因子图优化',
+                            data: [65, 95, 100, 70, 40, 60],
+                            fill: true,
+                            backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                            borderColor: 'rgb(52, 152, 219)',
+                            pointBackgroundColor: 'rgb(52, 152, 219)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(52, 152, 219)'
+                        },
+                        {
+                            label: 'ESIKF',
+                            data: [95, 75, 60, 90, 80, 100],
+                            fill: true,
+                            backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                            borderColor: 'rgb(46, 204, 113)',
+                            pointBackgroundColor: 'rgb(46, 204, 113)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(46, 204, 113)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: '因子图优化 vs ESIKF 特性对比',
+                            font: {
+                                size: 18
+                            }
+                        },
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 100
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize visualizations
+        window.onload = function() {
+            drawFactorGraph();
+            drawESKFDiagram();
+            drawComparisonChart();
+            
+            // Tab switching
+            document.querySelectorAll('.nav-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    document.querySelectorAll('.nav-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                });
+            });
+        };
+        
+        // Redraw on window resize
+        window.addEventListener('resize', function() {
+            drawFactorGraph();
+            drawESKFDiagram();
+        });
+    </script>
+</body>
+</html>

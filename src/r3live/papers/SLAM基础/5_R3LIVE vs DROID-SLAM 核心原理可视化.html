@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R3LIVE vs DROID-SLAM 核心原理可视化</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2ecc71;
+            --accent: #9b59b6;
+            --dark: #2c3e50;
+            --light: #ecf0f1;
+            --danger: #e74c3c;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--dark), var(--primary));
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            background: white;
+            border-radius: 50px;
+            padding: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .tab-btn {
+            padding: 12px 30px;
+            background: none;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 25px;
+            margin-bottom: 25px;
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--light);
+        }
+        
+        .card-icon {
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .card-title {
+            font-size: 1.5rem;
+            color: var(--dark);
+        }
+        
+        .visualization-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .math-formula {
+            flex: 1;
+            min-width: 300px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+        }
+        
+        .diagram {
+            flex: 1;
+            min-width: 300px;
+            height: 300px;
+            background: var(--light);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sensor {
+            position: absolute;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .point-cloud {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .point {
+            position: absolute;
+            background: var(--primary);
+            border-radius: 50%;
+            opacity: 0.7;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .comparison-table th, 
+        .comparison-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .comparison-table th {
+            background: var(--dark);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .comparison-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .comparison-table tr:hover {
+            background-color: #e9f7fe;
+        }
+        
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: 30px;
+            color: #777;
+            border-top: 1px solid #eee;
+        }
+        
+        @media (max-width: 768px) {
+            .visualization-container {
+                flex-direction: column;
+            }
+            
+            .tabs {
+                flex-direction: column;
+                border-radius: 10px;
+            }
+            
+            .tab-btn {
+                width: 100%;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>R3LIVE 与 DROID-SLAM 核心原理可视化</h1>
+            <p class="subtitle">LiDAR-惯性-视觉紧耦合 vs 深度学习密集光流SLAM系统</p>
+        </header>
+        
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="r3live">R3LIVE</button>
+            <button class="tab-btn" data-tab="droidslam">DROID-SLAM</button>
+            <button class="tab-btn" data-tab="comparison">对比分析</button>
+        </div>
+        
+        <!-- R3LIVE Content -->
+        <div id="r3live" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">L</div>
+                    <h2 class="card-title">系统架构：LiDAR-惯性-视觉紧耦合</h2>
+                </div>
+                <p>R3LIVE采用模块化设计，包含两个主要子系统：</p>
+                <ul>
+                    <li><strong>LIO子系统</strong>：利用LiDAR和IMU数据构建环境的几何结构（点云地图）</li>
+                    <li><strong>VIO子系统</strong>：利用相机和IMU数据为地图添加纹理（颜色信息）</li>
+                </ul>
+                
+                <div class="visualization-container">
+                    <div class="diagram" id="r3live-architecture">
+                        <!-- Architecture visualization will be rendered here -->
+                    </div>
+                    <div class="math-formula">
+                        <h3>状态向量表示</h3>
+                        <p>\[
+                        \mathbf{x} = \left[ \mathbf{p}, \mathbf{R}, \mathbf{v}, \mathbf{b}_g, \mathbf{b}_a, \mathbf{p}_{LtoI}, \mathbf{R}_{LtoI}, \mathbf{p}_{ItoC}, \mathbf{R}_{ItoC} \right]^T
+                        \]</p>
+                        <p>包含：IMU位姿(p,R)、速度(v)、IMU偏置(bg,ba)、LiDAR外参(p<sub>LtoI</sub>,R<sub>LtoI</sub>)、相机外参(p<sub>ItoC</sub>,R<sub>ItoC</sub>)</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">I</div>
+                    <h2 class="card-title">IMU预积分与状态传播</h2>
+                </div>
+                <p>利用IMU数据进行高频状态预测（传播）：</p>
+                
+                <div class="visualization-container">
+                    <div class="math-formula">
+                        <h3>R3LIVE误差状态迭代卡尔曼滤波器(ESIKF)</h3>
+                        
+                        <h4>1. 状态向量定义</h4>
+                        <p>\[
+                        \mathbf{x} = [\mathbf{p}^T, \mathbf{v}^T, \mathbf{q}^T, \mathbf{b}_a^T, \mathbf{b}_g^T, \mathbf{p}_{LI}^T, \mathbf{q}_{LI}^T, \mathbf{p}_{IC}^T, \mathbf{q}_{IC}^T]^T
+                        \]</p>
+                        <p>包括：位置、速度、四元数、IMU偏置、LiDAR-IMU外参、相机-IMU外参</p>
+                        
+                        <h4>2. 连续时间运动学模型</h4>
+                        <p>\[
+                        \begin{align}
+                        \dot{\mathbf{p}} &= \mathbf{v} \\
+                        \dot{\mathbf{v}} &= \mathbf{R}(\mathbf{a}_m - \mathbf{b}_a - \mathbf{n}_a) + \mathbf{g} \\
+                        \dot{\mathbf{q}} &= \frac{1}{2}\mathbf{q} \otimes [0, (\boldsymbol{\omega}_m - \mathbf{b}_g - \mathbf{n}_g)^T]^T \\
+                        \dot{\mathbf{b}}_a &= \mathbf{n}_{ba}, \quad \dot{\mathbf{b}}_g = \mathbf{n}_{bg}
+                        \end{align}
+                        \]</p>
+                        
+                        <h4>3. 误差状态传播</h4>
+                        <p>\[
+                        \begin{align}
+                        \delta\dot{\mathbf{p}} &= \delta\mathbf{v} \\
+                        \delta\dot{\mathbf{v}} &= -\mathbf{R}[\mathbf{a}_m - \mathbf{b}_a]_{\times}\delta\boldsymbol{\theta} - \mathbf{R}\delta\mathbf{b}_a - \mathbf{R}\mathbf{n}_a \\
+                        \delta\dot{\boldsymbol{\theta}} &= -[\boldsymbol{\omega}_m - \mathbf{b}_g]_{\times}\delta\boldsymbol{\theta} - \delta\mathbf{b}_g - \mathbf{n}_g \\
+                        \delta\dot{\mathbf{b}}_a &= \mathbf{n}_{ba}, \quad \delta\dot{\mathbf{b}}_g = \mathbf{n}_{bg}
+                        \end{align}
+                        \]</p>
+                        
+                        <h4>4. 离散化雅可比矩阵</h4>
+                        <p>\[
+                        \mathbf{F} = \begin{bmatrix}
+                        \mathbf{I} & \Delta t \mathbf{I} & \mathbf{0} & \mathbf{0} & \mathbf{0} \\
+                        \mathbf{0} & \mathbf{I} & -\mathbf{R}[\mathbf{a}_m - \mathbf{b}_a]_{\times}\Delta t & -\mathbf{R}\Delta t & \mathbf{0} \\
+                        \mathbf{0} & \mathbf{0} & \mathbf{I} - [\boldsymbol{\omega}_m - \mathbf{b}_g]_{\times}\Delta t & \mathbf{0} & -\mathbf{I}\Delta t \\
+                        \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{I} & \mathbf{0} \\
+                        \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{I}
+                        \end{bmatrix}
+                        \]</p>
+                    </div>
+                    <div class="diagram" id="imu-integration">
+                        <!-- IMU integration visualization will be rendered here -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">L</div>
+                    <h2 class="card-title">LiDAR测量更新 (LIO)</h2>
+                </div>
+                <p>使用LiDAR点云数据校正IMU预测的状态：</p>
+                
+                <div class="visualization-container">
+                    <div class="diagram" id="lidar-update">
+                        <!-- LiDAR update visualization will be rendered here -->
+                    </div>
+                    <div class="math-formula">
+                        <h3>点到平面残差</h3>
+                        <p>\[
+                        r_l(\mathbf{x}_{k+1}, L_{p_j}) = \mathbf{u}_j^T \cdot ({}^G\mathbf{p}_{I_{k+1}} + {}^G\mathbf{R}_{I_{k+1}} \cdot \text{Exp}({}^G\delta\mathbf{r}_{I_{k+1}}) \cdot ({}^I\mathbf{R}_{L_{k+1}} \cdot L_{p_j} + {}^I\mathbf{p}_{L_{k+1}}) - \mathbf{q}_j)
+                        \]</p>
+                        
+                        <h3>ESIKF更新方程</h3>
+                        <p>\[
+                        \begin{aligned}
+                        \mathbf{K} &= \mathbf{P} \mathbf{H}_l^T (\mathbf{H}_l \mathbf{P} \mathbf{H}_l^T + \mathbf{R}_l)^{-1} \\
+                        \delta\mathbf{x} &= -\mathbf{K} \cdot r_l(\check{\mathbf{x}}_{k+1}) \\
+                        \check{\mathbf{x}}_{k+1} &\leftarrow \check{\mathbf{x}}_{k+1} \oplus \delta\mathbf{x} \\
+                        \mathbf{P} &\leftarrow (\mathbf{I} - \mathbf{K} \mathbf{H}_l) \mathbf{P}
+                        \end{aligned}
+                        \]</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">V</div>
+                    <h2 class="card-title">视觉测量更新 (VIO)</h2>
+                </div>
+                <p>R3LIVE使用直接法，最小化帧到地图的光度误差：</p>
+                
+                <div class="visualization-container">
+                    <div class="math-formula">
+                        <h3>光度误差公式</h3>
+                        <p>\[
+                        r_p(\mathbf{x}_{k+1}) = I_{\text{ref}}(\mathbf{u}) - \exp(a) \cdot I_{\text{curr}} \left( \pi \left( \mathbf{K} \cdot \text{Exp}(\delta\mathbf{r}) \cdot \mathbf{R}_{\text{ref\_to\_curr}} \cdot (D_{\text{ref}} \cdot \mathbf{K}^{-1} \cdot \mathbf{u}) + \mathbf{p}_{\text{ref\_to\_curr}} \right) \right) - b
+                        \]</p>
+                        <p>其中：</p>
+                        <ul>
+                            <li>\(I_{\text{ref}}\) 和 \(I_{\text{curr}}\) 是参考帧和当前帧的像素亮度</li>
+                            <li>\(\pi\) 是透视投影函数</li>
+                            <li>\(\mathbf{K}\) 是相机内参</li>
+                            <li>\(D_{\text{ref}}\) 是从LIO获取的深度信息</li>
+                            <li>\(a\) 和 \(b\) 是光度仿射变换参数</li>
+                        </ul>
+                    </div>
+                    <div class="diagram" id="photometric-error">
+                        <!-- Photometric error visualization will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- DROID-SLAM Content -->
+        <div id="droidslam" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">D</div>
+                    <h2 class="card-title">端到端神经网络架构</h2>
+                </div>
+                <p>DROID-SLAM是一个基于深度学习的视觉SLAM系统：</p>
+                <ul>
+                    <li>整个系统（特征提取、位姿估计、深度估计、优化）都是神经网络</li>
+                    <li>使用密集光流而不是稀疏特征点</li>
+                    <li>可处理单目、双目和RGB-D输入</li>
+                </ul>
+                
+                <div class="visualization-container">
+                    <div class="diagram" id="droid-architecture">
+                        <!-- DROID-SLAM architecture visualization -->
+                    </div>
+                    <div class="math-formula">
+                        <h3>DROID-SLAM深度学习优化方法</h3>
+                        
+                        <h4>1. 密集光流计算</h4>
+                        <p>使用神经网络计算像素级密集光流：</p>
+                        <p>\[
+                        \mathbf{f}_{i \to j} = \text{FlowNet}(\mathbf{I}_i, \mathbf{I}_j, \mathbf{g}_i, \mathbf{g}_j)
+                        \]</p>
+                        <p>其中\(\mathbf{g}_i, \mathbf{g}_j\)是特征提取网络输出的特征图</p>
+                        
+                        <h4>2. 可微分Bundle Adjustment (DBA)</h4>
+                        <p>优化目标函数：</p>
+                        <p>\[
+                        \mathcal{L} = \sum_{(i,j) \in \mathcal{E}} \sum_{\mathbf{p} \in \mathcal{P}_{ij}} \rho\left(\|\mathbf{r}_{ij}(\mathbf{p})\|^2\right)
+                        \]</p>
+                        <p>其中残差函数为：</p>
+                        <p>\[
+                        \mathbf{r}_{ij}(\mathbf{p}) = \mathbf{p} + \mathbf{f}_{i \to j}(\mathbf{p}) - \pi(\mathbf{T}_{ij} \cdot \pi^{-1}(\mathbf{p}, d_i(\mathbf{p})))
+                        \]</p>
+                        
+                        <h4>3. 迭代位姿估计</h4>
+                        <p>使用GRU网络迭代更新位姿和深度：</p>
+                        <p>\[
+                        \begin{align}
+                        \mathbf{h}_t &= \text{GRU}(\mathbf{h}_{t-1}, [\mathbf{r}_t, \mathbf{g}_t]) \\
+                        \Delta\boldsymbol{\xi}_t &= \text{MLP}_{\text{pose}}(\mathbf{h}_t) \\
+                        \Delta\mathbf{d}_t &= \text{MLP}_{\text{depth}}(\mathbf{h}_t)
+                        \end{align}
+                        \]</p>
+                        
+                        <h4>4. 网络训练损失</h4>
+                        <p>终端到端训练损失函数：</p>
+                        <p>\[
+                        \mathcal{L}_{\text{total}} = \lambda_1 \mathcal{L}_{\text{flow}} + \lambda_2 \mathcal{L}_{\text{pose}} + \lambda_3 \mathcal{L}_{\text{depth}} + \lambda_4 \mathcal{L}_{\text{BA}}
+                        \]</p>
+                        <p>包括光流损失、位姿损失、深度损失和BA损失</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">F</div>
+                    <h2 class="card-title">密集光流与对应关系</h2>
+                </div>
+                <p>密集光流描述图像序列中像素的表观运动：</p>
+                
+                <div class="visualization-container">
+                    <div class="math-formula">
+                        <h3>光流的作用</h3>
+                        <ul>
+                            <li>提供像素级的对应关系</li>
+                            <li>替代传统特征提取和匹配</li>
+                            <li>使系统对纹理缺失环境更鲁棒</li>
+                        </ul>
+                        
+                        <h3>与传统SLAM对比</h3>
+                        <p>传统方法使用稀疏特征点（如SIFT、ORB），而DROID-SLAM利用所有像素信息</p>
+                    </div>
+                    <div class="diagram" id="optical-flow">
+                        <!-- Optical flow visualization -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">B</div>
+                    <h2 class="card-title">可微分密集光束法平差 (DBA)</h2>
+                </div>
+                <p>DROID-SLAM的核心创新：</p>
+                
+                <div class="visualization-container">
+                    <div class="diagram" id="dba-layer">
+                        <!-- DBA layer visualization -->
+                    </div>
+                    <div class="math-formula">
+                        <h3>DBA层工作原理</h3>
+                        <p>\[
+                        \begin{aligned}
+                        \text{输入} & : \text{光流、初始位姿、深度} \\
+                        \text{优化} & : \text{密集BA最小化重投影误差} \\
+                        \text{输出} & : \text{优化后的位姿和深度} \\
+                        \text{梯度} & : \text{反向传播更新网络参数}
+                        \end{aligned}
+                        \]</p>
+                        
+                        <h3>优势</h3>
+                        <ul>
+                            <li>端到端可训练</li>
+                            <li>全局优化减少累积误差</li>
+                            <li>对挑战性环境鲁棒</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">O</div>
+                    <h2 class="card-title">全局优化与回环检测</h2>
+                </div>
+                <p>DROID-SLAM通过DBA层实现全局优化：</p>
+                
+                <div class="visualization-container">
+                    <div class="math-formula">
+                        <h3>优化目标</h3>
+                        <p>最小化所有像素的重投影误差：</p>
+                        <p>\[
+                        \min_{\mathbf{T}, \mathbf{D}} \sum_{i} \sum_{p} \| \pi(\mathbf{T}_{ij} \cdot \mathbf{D}_i(p)) - p' \|^2
+                        \]</p>
+                        <p>其中 \(\mathbf{T}\) 是位姿，\(\mathbf{D}\) 是深度图</p>
+                        
+                        <h3>回环处理</h3>
+                        <p>当检测到回环时，DBA层自动调整所有相关帧的位姿，纠正累积误差</p>
+                    </div>
+                    <div class="diagram" id="global-optimization">
+                        <!-- Global optimization visualization -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Comparison Content -->
+        <div id="comparison" class="tab-content">
+            <div class="card">
+                <h2 class="card-title" style="text-align: center; margin-bottom: 20px;">R3LIVE 与 DROID-SLAM 对比分析</h2>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>特性</th>
+                            <th>R3LIVE</th>
+                            <th>DROID-SLAM</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>核心架构</strong></td>
+                            <td>LiDAR-惯性-视觉紧耦合</td>
+                            <td>端到端深度学习</td>
+                        </tr>
+                        <tr>
+                            <td><strong>传感器融合</strong></td>
+                            <td>LiDAR + IMU + 相机（必需）</td>
+                            <td>主要视觉（单目/双目/RGB-D）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>前端处理</strong></td>
+                            <td>IMU预积分 + LiDAR特征提取</td>
+                            <td>神经网络特征提取 + 密集光流</td>
+                        </tr>
+                        <tr>
+                            <td><strong>后端优化</strong></td>
+                            <td>ESIKF滤波器 + 因子图优化</td>
+                            <td>可微分密集光束法平差(DBA)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>视觉方法</strong></td>
+                            <td>直接法（最小化光度误差）</td>
+                            <td>密集光流与重投影误差</td>
+                        </tr>
+                        <tr>
+                            <td><strong>地图输出</strong></td>
+                            <td>带RGB颜色的稠密点云</td>
+                            <td>稠密3D点云（几何+纹理）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>优势</strong></td>
+                            <td>多传感器互补，几何结构精确</td>
+                            <td>端到端学习，挑战环境鲁棒</td>
+                        </tr>
+                        <tr>
+                            <td><strong>适用场景</strong></td>
+                            <td>自动驾驶、无人机、手持建图</td>
+                            <td>AR/VR、机器人导航、3D重建</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="visualization-container">
+                    <div style="flex: 1; min-width: 300px;">
+                        <h3 style="text-align: center; margin: 20px 0;">R3LIVE工作流程</h3>
+                        <canvas id="r3live-chart" height="300"></canvas>
+                    </div>
+                    <div style="flex: 1; min-width: 300px;">
+                        <h3 style="text-align: center; margin: 20px 0;">DROID-SLAM工作流程</h3>
+                        <canvas id="droid-chart" height="300"></canvas>
+                    </div>
+                </div>
+                
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #3498db;"></div>
+                        <span>IMU/LiDAR处理</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #2ecc71;"></div>
+                        <span>视觉处理</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #9b59b6;"></div>
+                        <span>数据融合</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #e74c3c;"></div>
+                        <span>优化过程</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #f1c40f;"></div>
+                        <span>地图构建</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">🌐</div>
+                <h2 class="card-title">应用场景分析与部署建议</h2>
+            </div>
+            
+            <div class="visualization-container">
+                <div class="math-formula">
+                    <h3>R3LIVE适用场景</h3>
+                    <ul>
+                        <li><strong>高精度测绘：</strong>需要cm级精度的三维重建任务</li>
+                        <li><strong>室外大范围：</strong>开放式环境下的自动驾驶和机器人导航</li>
+                        <li><strong>复杂光照：</strong>光照变化剧烈的环境（髗道、夜间等）</li>
+                        <li><strong>高动态场景：</strong>快速运动下的实时SLAM</li>
+                        <li><strong>长期运行：</strong>需要长时间稳定运行的系统</li>
+                    </ul>
+                    
+                    <h3>R3LIVE部署要求</h3>
+                    <ul>
+                        <li><strong>硬件配置：</strong>LiDAR + IMU + 相机的精确标定系统</li>
+                        <li><strong>计算资源：</strong>CPU密集型，需要高性能处理器</li>
+                        <li><strong>存储需求：</strong>中等，主要存储稀疏特征和关键帧</li>
+                        <li><strong>实时性：</strong>可实现实时处理（>30Hz）</li>
+                    </ul>
+                </div>
+                
+                <div class="math-formula">
+                    <h3>DROID-SLAM适用场景</h3>
+                    <ul>
+                        <li><strong>室内环境：</strong>纹理丰富的室内场景</li>
+                        <li><strong>稠密重建：</strong>需要稠密深度图的应用</li>
+                        <li><strong>低成本部署：</strong>仅需相机的低成本解决方案</li>
+                        <li><strong>多样化场景：</strong>需要在多种不同场景下部署</li>
+                        <li><strong>离线处理：</strong>对实时性要求不高的应用</li>
+                    </ul>
+                    
+                    <h3>DROID-SLAM部署要求</h3>
+                    <ul>
+                        <li><strong>硬件配置：</strong>仅需单目或双目相机</li>
+                        <li><strong>计算资源：</strong>GPU密集型，需要高性能GPU支持</li>
+                        <li><strong>存储需求：</strong>较高，需存储密集特征图</li>
+                        <li><strong>实时性：</strong>受GPU性能限制，通常<15Hz</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="math-formula">
+                <h3>选型决策矩阵</h3>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>应用需求</th>
+                            <th>推荐系统</th>
+                            <th>理由</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>高精度定位 + 实时性</td>
+                            <td><strong>R3LIVE</strong></td>
+                            <td>多传感器融合提供更高精度和鲁棒性</td>
+                        </tr>
+                        <tr>
+                            <td>稠密重建 + 成本敏感</td>
+                            <td><strong>DROID-SLAM</strong></td>
+                            <td>仅需相机，输出稠密深度图</td>
+                        </tr>
+                        <tr>
+                            <td>室外大范围导航</td>
+                            <td><strong>R3LIVE</strong></td>
+                            <td>LiDAR提供精确的几何结构信息</td>
+                        </tr>
+                        <tr>
+                            <td>室内视觉导航</td>
+                            <td><strong>DROID-SLAM</strong></td>
+                            <td>在纹理丰富环境下表现优异</td>
+                        </tr>
+                        <tr>
+                            <td>快速运动场景</td>
+                            <td><strong>R3LIVE</strong></td>
+                            <td>IMU高频数据处理运动模糊</td>
+                        </tr>
+                        <tr>
+                            <td>多场景适应性</td>
+                            <td><strong>DROID-SLAM</strong></td>
+                            <td>深度学习模型泛化能力强</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="key-concept">
+                <h3>未来发展趋势</h3>
+                <p><strong>混合架构：</strong>未来的SLAM系统可能会结合两种方法的优势：</p>
+                <ul>
+                    <li>使用传统方法进行实时状态估计</li>
+                    <li>利用深度学习进行后处理优化和稠密重建</li>
+                    <li>自适应地在不同场景下切换算法策略</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>R3LIVE 与 DROID-SLAM 核心原理可视化 | 数学公式使用MathJax渲染</p>
+        </div>
+    </div>
+    
+    <script>
+        // Tab switching functionality
+        document.querySelectorAll('.tab-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                // Remove active class from all buttons and contents
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                
+                // Add active class to clicked button
+                button.classList.add('active');
+                
+                // Show corresponding content
+                const tabId = button.getAttribute('data-tab');
+                document.getElementById(tabId).classList.add('active');
+                
+                // Render visualizations when tab becomes active
+                if (tabId === 'r3live') {
+                    renderR3LIVEVisualizations();
+                } else if (tabId === 'droidslam') {
+                    renderDROIDSLAMVisualizations();
+                } else if (tabId === 'comparison') {
+                    renderComparisonCharts();
+                }
+            });
+        });
+        
+        // R3LIVE Visualization Functions
+        function renderR3LIVEVisualizations() {
+            renderR3LIVEArchitecture();
+            renderIMUIntegration();
+            renderLiDARUpdate();
+            renderPhotometricError();
+        }
+        
+        function renderR3LIVEArchitecture() {
+            const container = document.getElementById('r3live-architecture');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw LIO subsystem
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath();
+            ctx.arc(canvas.width/4, canvas.height/2, 50, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('LIO', canvas.width/4, canvas.height/2 + 7);
+            
+            // Draw VIO subsystem
+            ctx.fillStyle = '#2ecc71';
+            ctx.beginPath();
+            ctx.arc(canvas.width*3/4, canvas.height/2, 50, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.fillText('VIO', canvas.width*3/4, canvas.height/2 + 7);
+            
+            // Draw IMU
+            ctx.fillStyle = '#9b59b6';
+            ctx.beginPath();
+            ctx.arc(canvas.width/2, canvas.height/4, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText('IMU', canvas.width/2, canvas.height/4 + 5);
+            
+            // Draw connections
+            ctx.strokeStyle = '#7f8c8d';
+            ctx.lineWidth = 2;
+            
+            // IMU to LIO
+            ctx.beginPath();
+            ctx.moveTo(canvas.width/2, canvas.height/4 + 30);
+            ctx.lineTo(canvas.width/4, canvas.height/2 - 50);
+            ctx.stroke();
+            
+            // IMU to VIO
+            ctx.beginPath();
+            ctx.moveTo(canvas.width/2, canvas.height/4 + 30);
+            ctx.lineTo(canvas.width*3/4, canvas.height/2 - 50);
+            ctx.stroke();
+            
+            // LIO to VIO
+            ctx.beginPath();
+            ctx.moveTo(canvas.width/4 + 50, canvas.height/2);
+            ctx.lineTo(canvas.width*3/4 - 50, canvas.height/2);
+            ctx.stroke();
+            
+            // Draw map output
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillRect(canvas.width/2 - 60, canvas.height*3/4 - 25, 120, 50);
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.fillText('彩色点云地图', canvas.width/2, canvas.height*3/4);
+        }
+        
+        function renderIMUIntegration() {
+            const container = document.getElementById('imu-integration');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw timeline
+            ctx.strokeStyle = '#34495e';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height/2);
+            ctx.lineTo(canvas.width - 50, canvas.height/2);
+            ctx.stroke();
+            
+            // Draw IMU data points
+            const points = 15;
+            for (let i = 0; i < points; i++) {
+                const x = 50 + (i / (points - 1)) * (canvas.width - 100);
+                const y = canvas.height/2 + Math.sin(i * 0.8) * 30;
+                
+                ctx.fillStyle = '#3498db';
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw acceleration vectors
+                if (i < points - 1) {
+                    const nextX = 50 + ((i+1) / (points - 1)) * (canvas.width - 100);
+                    const nextY = canvas.height/2 + Math.sin((i+1) * 0.8) * 30;
+                    
+                    const dx = nextX - x;
+                    const dy = nextY - y;
+                    
+                    // Draw direction vector
+                    ctx.strokeStyle = '#e74c3c';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + dx * 0.7, y + dy * 0.7);
+                    ctx.stroke();
+                    
+                    // Draw arrowhead
+                    ctx.fillStyle = '#e74c3c';
+                    drawArrowhead(ctx, x + dx * 0.7, y + dy * 0.7, Math.atan2(dy, dx));
+                }
+            }
+            
+            // Draw integrated pose
+            ctx.fillStyle = '#2ecc71';
+            ctx.beginPath();
+            ctx.arc(canvas.width - 60, canvas.height/2, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText('位姿', canvas.width - 60, canvas.height/2 + 5);
+            
+            // Labels
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.fillText('IMU数据流', 50, canvas.height/2 - 40);
+            ctx.fillText('积分结果', canvas.width - 100, canvas.height/2 - 40);
+        }
+        
+        function drawArrowhead(ctx, x, y, angle) {
+            const size = 8;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-size, -size/2);
+            ctx.lineTo(-size, size/2);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function renderLiDARUpdate() {
+            const container = document.getElementById('lidar-update');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw plane
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.3)';
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height - 50);
+            ctx.lineTo(canvas.width - 50, canvas.height - 100);
+            ctx.lineTo(canvas.width - 50, canvas.height - 150);
+            ctx.lineTo(50, canvas.height - 100);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw normal vector
+            const planeCenterX = (50 + canvas.width - 50) / 2;
+            const planeCenterY = (canvas.height - 50 + canvas.height - 100 + canvas.height - 150 + canvas.height - 100) / 4;
+            
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(planeCenterX, planeCenterY);
+            ctx.lineTo(planeCenterX, planeCenterY - 80);
+            ctx.stroke();
+            
+            // Draw arrowhead
+            ctx.fillStyle = '#e74c3c';
+            drawArrowhead(ctx, planeCenterX, planeCenterY - 80, -Math.PI/2);
+            
+            // Draw LiDAR points
+            for (let i = 0; i < 20; i++) {
+                const x = 50 + Math.random() * (canvas.width - 100);
+                const y = 50 + Math.random() * (canvas.height - 200);
+                
+                ctx.fillStyle = '#2ecc71';
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw projection line to plane
+                ctx.strokeStyle = 'rgba(149, 165, 166, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                
+                // Simple projection - just move down to plane
+                const planeY = canvas.height - 100 - (x - 50) * 0.25;
+                ctx.lineTo(x, planeY);
+                ctx.stroke();
+                
+                // Draw projected point
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.arc(x, planeY, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw LiDAR sensor
+            ctx.fillStyle = '#9b59b6';
+            ctx.beginPath();
+            ctx.arc(canvas.width/2, 40, 25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText('LiDAR', canvas.width/2, 45);
+            
+            // Labels
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.fillText('激光点', canvas.width - 100, 80);
+            ctx.fillText('投影点', canvas.width - 100, canvas.height - 170);
+            ctx.fillText('平面法向量', planeCenterX + 20, planeCenterY - 40);
+        }
+        
+        function renderPhotometricError() {
+            const container = document.getElementById('photometric-error');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw reference frame (map)
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
+            ctx.fillRect(20, 20, canvas.width/2 - 40, canvas.height - 40);
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(20, 20, canvas.width/2 - 40, canvas.height - 40);
+            
+            // Draw current frame
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.2)';
+            ctx.fillRect(canvas.width/2 + 20, 20, canvas.width/2 - 40, canvas.height - 40);
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(canvas.width/2 + 20, 20, canvas.width/2 - 40, canvas.height - 40);
+            
+            // Draw some features in reference frame
+            for (let i = 0; i < 50; i++) {
+                const x = 30 + Math.random() * (canvas.width/2 - 60);
+                const y = 30 + Math.random() * (canvas.height - 60);
+                const size = 2 + Math.random() * 4;
+                const brightness = 50 + Math.floor(Math.random() * 150);
+                
+                ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw corresponding points in current frame (slightly shifted)
+            for (let i = 0; i < 50; i++) {
+                const refX = 30 + Math.random() * (canvas.width/2 - 60);
+                const refY = 30 + Math.random() * (canvas.height - 60);
+                const currX = canvas.width/2 + 30 + Math.random() * (canvas.width/2 - 60);
+                const currY = 30 + Math.random() * (canvas.height - 60);
+                const size = 2 + Math.random() * 4;
+                const brightness = 50 + Math.floor(Math.random() * 150);
+                
+                // Draw in current frame
+                ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
+                ctx.beginPath();
+                ctx.arc(currX, currY, size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw connection line
+                ctx.strokeStyle = 'rgba(231, 76, 60, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(refX, refY);
+                ctx.lineTo(currX, currY);
+                ctx.stroke();
+                
+                // Draw error vector
+                const errorVecX = currX - (refX + canvas.width/2);
+                const errorVecY = currY - refY;
+                
+                if (Math.abs(errorVecX) > 5 || Math.abs(errorVecY) > 5) {
+                    ctx.strokeStyle = '#e74c3c';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(refX + canvas.width/2, refY);
+                    ctx.lineTo(currX, currY);
+                    ctx.stroke();
+                }
+            }
+            
+            // Labels
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('地图参考帧', canvas.width/4, 15);
+            ctx.fillText('当前相机帧', canvas.width*3/4, 15);
+            ctx.fillText('光度误差向量', canvas.width/2, canvas.height - 20);
+        }
+        
+        // DROID-SLAM Visualization Functions
+        function renderDROIDSLAMVisualizations() {
+            renderDROIDArchitecture();
+            renderOpticalFlow();
+            renderDBALayer();
+            renderGlobalOptimization();
+        }
+        
+        function renderDROIDArchitecture() {
+            const container = document.getElementById('droid-architecture');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw neural network layers
+            const layers = [
+                { name: "输入帧", color: "#3498db" },
+                { name: "特征提取", color: "#2ecc71" },
+                { name: "光流预测", color: "#9b59b6" },
+                { name: "DBA层", color: "#e74c3c" },
+                { name: "位姿/深度", color: "#f1c40f" }
+            ];
+            
+            const layerWidth = 80;
+            const layerSpacing = (canvas.width - layerWidth * layers.length) / (layers.length + 1);
+            
+            for (let i = 0; i < layers.length; i++) {
+                const x = layerSpacing + i * (layerWidth + layerSpacing);
+                const y = canvas.height / 2 - 40;
+                
+                // Draw layer
+                ctx.fillStyle = layers[i].color;
+                ctx.fillRect(x, y, layerWidth, 80);
+                
+                // Draw layer name
+                ctx.fillStyle = 'white';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(layers[i].name, x + layerWidth/2, y + 45);
+                
+                // Draw connections to next layer
+                if (i < layers.length - 1) {
+                    const nextX = x + layerWidth + layerSpacing;
+                    
+                    ctx.strokeStyle = '#7f8c8d';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x + layerWidth, y + 40);
+                    ctx.lineTo(nextX, y + 40);
+                    ctx.stroke();
+                    
+                    // Draw arrowhead
+                    ctx.fillStyle = '#7f8c8d';
+                    drawArrowhead(ctx, nextX, y + 40, 0);
+                }
+            }
+            
+            // Draw feedback connection
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - layerSpacing - layerWidth/2, canvas.height/2 + 40);
+            ctx.lineTo(canvas.width - layerSpacing - layerWidth/2, canvas.height/2 + 100);
+            ctx.lineTo(layerSpacing + layerWidth/2, canvas.height/2 + 100);
+            ctx.lineTo(layerSpacing + layerWidth/2, canvas.height/2 + 40);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw arrowhead
+            drawArrowhead(ctx, layerSpacing + layerWidth/2, canvas.height/2 + 40, -Math.PI/2);
+            
+            // Draw label
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = '14px Arial';
+            ctx.fillText('梯度反向传播', canvas.width/2, canvas.height/2 + 90);
+        }
+        
+        function renderOpticalFlow() {
+            const container = document.getElementById('optical-flow');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw reference frame
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.1)';
+            ctx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
+            
+            // Draw a moving object
+            const centerX = canvas.width/2;
+            const centerY = canvas.height/2;
+            const radius = 60;
+            
+            // Draw object in previous position
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.5)';
+            ctx.beginPath();
+            ctx.arc(centerX - 40, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw object in current position
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
+            ctx.beginPath();
+            ctx.arc(centerX + 40, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw optical flow vectors
+            for (let i = 0; i < 100; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * (radius - 10);
+                const x = centerX - 40 + Math.cos(angle) * dist;
+                const y = centerY + Math.sin(angle) * dist;
+                
+                ctx.strokeStyle = '#9b59b6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + 80, y);
+                ctx.stroke();
+                
+                // Draw arrowhead
+                drawArrowhead(ctx, x + 80, y, 0);
+            }
+            
+            // Labels
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('前一帧物体位置', centerX - 40, centerY - radius - 10);
+            ctx.fillText('当前帧物体位置', centerX + 40, centerY - radius - 10);
+            ctx.fillText('光流向量表示像素运动', canvas.width/2, canvas.height - 20);
+        }
+        
+        function renderDBALayer() {
+            const container = document.getElementById('dba-layer');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw input
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(50, 50, 100, 60);
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('初始位姿', 100, 80);
+            ctx.fillText('深度估计', 100, 95);
+            
+            // Draw DBA layer
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(200, 40, 120, 80);
+            ctx.fillStyle = 'white';
+            ctx.fillText('可微分DBA层', 260, 80);
+            
+            // Draw output
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(370, 50, 100, 60);
+            ctx.fillStyle = 'white';
+            ctx.fillText('优化位姿', 420, 80);
+            ctx.fillText('优化深度', 420, 95);
+            
+            // Draw connections
+            ctx.strokeStyle = '#7f8c8d';
+            ctx.lineWidth = 2;
+            
+            // Input to DBA
+            ctx.beginPath();
+            ctx.moveTo(150, 80);
+            ctx.lineTo(200, 80);
+            ctx.stroke();
+            drawArrowhead(ctx, 200, 80, 0);
+            
+            // DBA to output
+            ctx.beginPath();
+            ctx.moveTo(320, 80);
+            ctx.lineTo(370, 80);
+            ctx.stroke();
+            drawArrowhead(ctx, 370, 80, 0);
+            
+            // Draw optimization process
+            for (let i = 0; i < 3; i++) {
+                const y = 150 + i * 60;
+                
+                // Draw camera
+                ctx.fillStyle = '#3498db';
+                ctx.beginPath();
+                ctx.moveTo(100, y);
+                ctx.lineTo(80, y - 20);
+                ctx.lineTo(80, y + 20);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw point cloud
+                for (let j = 0; j < 15; j++) {
+                    const px = 200 + Math.random() * 200;
+                    const py = y - 50 + Math.random() * 100;
+                    
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Draw projection line
+                    ctx.strokeStyle = 'rgba(149, 165, 166, 0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(100, y);
+                    ctx.lineTo(px, py);
+                    ctx.stroke();
+                }
+                
+                // Draw iteration number
+                ctx.fillStyle = 'black';
+                ctx.font = '14px Arial';
+                ctx.fillText(`迭代 ${i+1}`, 50, y + 5);
+            }
+            
+            // Draw convergence
+            ctx.strokeStyle = '#9b59b6';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(320, 150);
+            ctx.lineTo(320, 270);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#9b59b6';
+            ctx.font = '14px Arial';
+            ctx.fillText('优化收敛', 340, 210);
+        }
+        
+        function renderGlobalOptimization() {
+            const container = document.getElementById('global-optimization');
+            container.innerHTML = '';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            container.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw trajectory with drift
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height/2);
+            
+            for (let i = 1; i <= 10; i++) {
+                const x = 50 + i * 60;
+                const y = canvas.height/2 - Math.sin(i * 0.5) * 30 - i * 5;
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Draw loop closure connection
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height/2);
+            ctx.lineTo(50 + 10 * 60, canvas.height/2 - Math.sin(10 * 0.5) * 30 - 10 * 5);
+            ctx.stroke();
+            
+            // Draw corrected trajectory
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height/2);
+            
+            for (let i = 1; i <= 10; i++) {
+                const x = 50 + i * 60;
+                // Corrected trajectory has less drift
+                const y = canvas.height/2 - Math.sin(i * 0.5) * 30;
+                
+                // Adjust later points based on loop closure
+                const correction = i > 5 ? (10 - i) * 5 : 0;
+                
+                ctx.lineTo(x, y - correction);
+            }
+            ctx.stroke();
+            
+            // Draw keyframes
+            for (let i = 0; i <= 10; i++) {
+                const x = 50 + i * 60;
+                const y = i === 0 || i === 10 ? canvas.height/2 : 
+                          canvas.height/2 - Math.sin(i * 0.5) * 30 - (i > 5 ? (10 - i) * 5 : 0);
+                
+                ctx.fillStyle = '#9b59b6';
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = 'white';
+                ctx.font = '12px Arial';
+                ctx.fillText(i.toString(), x - 3, y + 4);
+            }
+            
+            // Labels
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.fillText('累积误差轨迹（未优化）', 200, 50);
+            ctx.fillText('回环检测连接', 350, canvas.height/2 - 70);
+            ctx.fillText('全局优化后轨迹', 200, canvas.height - 30);
+        }
+        
+        // Comparison Charts
+        function renderComparisonCharts() {
+            // R3LIVE process chart
+            const r3liveCtx = document.getElementById('r3live-chart').getContext('2d');
+            new Chart(r3liveCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['IMU预积分', 'LiDAR处理', '视觉处理', '数据融合', '地图构建'],
+                    datasets: [{
+                        label: '处理强度',
+                        data: [85, 75, 65, 90, 70],
+                        backgroundColor: [
+                            '#3498db',
+                            '#3498db',
+                            '#2ecc71',
+                            '#9b59b6',
+                            '#f1c40f'
+                        ],
+                        borderColor: [
+                            '#2980b9',
+                            '#2980b9',
+                            '#27ae60',
+                            '#8e44ad',
+                            '#f39c12'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'R3LIVE处理流程'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+            
+            // DROID-SLAM process chart
+            const droidCtx = document.getElementById('droid-chart').getContext('2d');
+            new Chart(droidCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['特征提取', '光流计算', 'DBA优化', '深度估计', '地图生成'],
+                    datasets: [{
+                        label: '处理强度',
+                        data: [70, 85, 95, 80, 75],
+                        backgroundColor: [
+                            '#2ecc71',
+                            '#9b59b6',
+                            '#e74c3c',
+                            '#3498db',
+                            '#f1c40f'
+                        ],
+                        borderColor: [
+                            '#27ae60',
+                            '#8e44ad',
+                            '#c0392b',
+                            '#2980b9',
+                            '#f39c12'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'DROID-SLAM处理流程'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initial render
+        renderR3LIVEVisualizations();
+        renderComparisonCharts();
+    </script>
+</body>
+</html>
