@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- USB Camera Node for /dev/video1 -->
+  <node name="usb_cam" pkg="usb_cam" type="usb_cam_node" output="screen">
+    <!-- 指定使用 /dev/video1 摄像头 -->
+    <param name="video_device" value="/dev/video1" />
+    
+    <!-- 图像尺寸 - 根据你的摄像头支持的分辨率调整 -->
+    <param name="image_width" value="1280" />
+    <param name="image_height" value="1024" />
+    
+    <!-- 像素格式 - 常见格式：yuyv, mjpeg, rgb24 -->
+    <param name="pixel_format" value="yuyv" />
+    
+    <!-- 帧率 -->
+    <param name="framerate" value="30" />
+    
+    <!-- 相机坐标系 -->
+    <param name="camera_frame_id" value="usb_cam" />
+    
+    <!-- IO 方法 -->
+    <param name="io_method" value="mmap"/>
+    
+    <!-- 相机名称 -->
+    <param name="camera_name" value="r3live_camera"/>
+    
+    <!-- 相机标定文件路径（可选） -->
+    <param name="camera_info_url" value="package://r3live/config/camera_info.yaml"/>
+  </node>
+  
+  <!-- 图像处理节点（可选，用于去畸变等） -->
+  <node name="image_proc" pkg="image_proc" type="image_proc" ns="usb_cam" />
+</launch>
+

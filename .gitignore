@@ -1,0 +1,187 @@
+# ==== R3LIVE项目 .gitignore ====
+
+# === 系统文件 ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === IDE和编辑器 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+
+# === C++编译文件 ===
+# 目标文件
+*.o
+*.ko
+*.obj
+*.elf
+
+# 链接器输出
+*.ilk
+*.map
+*.exp
+
+# 库文件
+*.lib
+*.a
+*.la
+*.lo
+
+# 共享对象 (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# 可执行文件
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Debug文件
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# === CMake ===
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+build/
+Build/
+BUILD/
+
+# === ROS相关 ===
+devel/
+logs/
+.catkin_workspace
+.catkin_tools/
+
+# === 数据文件 ===
+# 大型数据集
+*.bag
+*.rosbag
+*.pcd
+*.ply
+*.las
+*.laz
+
+# 图像和视频
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.avi
+*.mp4
+*.mov
+*.mkv
+
+# 除了文档中的图片
+!papers/**/*.png
+!papers/**/*.jpg
+!papers/**/*.jpeg
+!papers/**/*.gif
+!*.png
+!control_panel.png
+!envs.png
+
+# === 日志文件 ===
+*.log
+log/
+logs/
+
+# === 临时文件 ===
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# === Python相关 (如果有Python脚本) ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# === 配置文件 (保留模板，忽略本地配置) ===
+# 保留示例配置文件
+!config/*.yaml.example
+!config/*.yml.example
+!config/*.json.example
+
+# 忽略可能的本地配置
+config/local_*
+config/*_local.*
+
+# === 输出结果 ===
+output/
+results/
+trajectory/
+map/
+pointcloud/
+
+# === 第三方库 ===
+third_party/
+external/
+deps/
+
+# === 备份文件 ===
+*.bak
+*.backup
+*.orig
+
+# === 压缩文件 ===
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# === 特定于R3LIVE的忽略项 ===
+# 可能的输出目录
+r3live_output/
+slam_results/
+trajectory_output/
+
+# 可能的缓存目录
+.r3live_cache/
+cache/
+
+# === 文档生成 ===
+docs/_build/
+docs/build/
+
+# === 测试相关 ===
+test_results/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+

@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Simple Camera Publisher Launch File -->
+  <!-- 替代 usb_cam 包的简单摄像头发布节点 -->
+  
+  <arg name="video_device" default="/dev/video1" />
+  <arg name="image_width" default="1280" />
+  <arg name="image_height" default="720" />
+  <arg name="framerate" default="30" />
+  <arg name="camera_frame_id" default="usb_cam" />
+  <arg name="camera_name" default="r3live_camera" />
+  <arg name="camera_info_url" default="package://r3live/config/camera_info.yaml" />
+  
+  <!-- 启动简单摄像头发布节点 -->
+  <node name="simple_camera_publisher" pkg="r3live" type="simple_camera_publisher.py" output="screen">
+    <param name="video_device" value="$(arg video_device)" />
+    <param name="image_width" value="$(arg image_width)" />
+    <param name="image_height" value="$(arg image_height)" />
+    <param name="framerate" value="$(arg framerate)" />
+    <param name="camera_frame_id" value="$(arg camera_frame_id)" />
+    <param name="camera_name" value="$(arg camera_name)" />
+    <param name="camera_info_url" value="$(arg camera_info_url)" />
+  </node>
+  
+  <!-- 可选：启动图像处理节点 -->
+  <node name="image_proc" pkg="image_proc" type="image_proc" ns="usb_cam" if="false">
+    <remap from="image_raw" to="/usb_cam/image_raw" />
+    <remap from="camera_info" to="/usb_cam/camera_info" />
+  </node>
+  
+</launch>
+

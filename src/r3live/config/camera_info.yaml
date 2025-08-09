@@ -1,0 +1,21 @@
+image_width: 1280
+image_height: 720
+camera_name: r3live_camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [863.4241, 0.0, 640.6808, 0.0, 863.4171, 518.3392, 0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.1080, 0.1050, -1.2872e-04, 5.7923e-05, -0.0222]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [863.4241, 0.0, 640.6808, 0.0, 0.0, 863.4171, 518.3392, 0.0, 0.0, 0.0, 1.0, 0.0]
+
